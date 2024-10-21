@@ -40,7 +40,7 @@ static Token *newToken(TokenKind kind, char *start, char *end)
 static void error(char *Fmt, ...)
 {
   va_list VA;
-  va_start(VA, Fmt); // VA 获取 Fmt 后面的所有参数
+  va_start(VA, Fmt);         // VA 获取 Fmt 后面的所有参数
   vfprintf(stderr, Fmt, VA); // vfprintf 可以输出 va_list 类型的参数
   fprintf(stderr, "\n");
   // 清除 VA
@@ -122,12 +122,12 @@ static Token *parse()
 
     if (isdigit(*P))
     {
-      Cur->next = newToken(TK_NUM, P, P);
-      Cur = Cur->next;
+      char *older = P;
+      const int num = strtoul(P, &P, 10);
 
-      const char *older = P;
-      Cur->Val = strtoul(P, &P, 10);
-      Cur->Len = P - older;
+      Cur->next = newToken(TK_NUM, older, P);
+      Cur = Cur->next;
+      Cur->Val = num;
     }
     else if (*P == '+' || *P == '-')
     {
