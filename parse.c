@@ -1,5 +1,8 @@
 #include "rvcc.h"
 
+// program = stmt*
+// stmt = exprStmt
+// exprStmt = expr ";"
 // expr = equality
 // equality = relational ("==" relational | "!=" relational)*
 // relational = add ("<" add | "<=" add | ">" add | ">=" add)*
@@ -7,6 +10,8 @@
 // mul = unary ("*" unary | "/" unary)*
 // unary = ("+" | "-" ) unary | primary
 // primary = "(" add ")" | num
+static Node *stmt(Token **Rest, Token *Tok);
+static Node *exprStmt(Token **Rest, Token *Tok);
 static Node *expr(Token **Rest, Token *Tok);
 static Node *equality(Token **Rest, Token *Tok);
 static Node *relational(Token **Rest, Token *Tok);
@@ -44,6 +49,20 @@ static Node *newNumNode(int Val)
 {
     Node *node = newNode(ND_INT);
     node->Val = Val;
+    return node;
+}
+
+// stmt = exprStmt
+static Node *stmt(Token **Rest, Token *Tok)
+{
+    return exprStmt(Rest, Tok);
+}
+
+// exprStmt = expr ";"
+static Node *exprStmt(Token **Rest, Token *Tok)
+{
+    Node *node = newUnary(ND_EXPR_STMT, expr(&Tok, Tok));
+    *Rest = skip(Tok, ";");
     return node;
 }
 
@@ -199,10 +218,16 @@ static Node *primary(Token **Rest, Token *Tok)
     }
 }
 
+// 语法解析入口函数
+// program = stmt*
 Node *parse(Token *Tok)
 {
-    Node *Nd = expr(&Tok, Tok);
-    if (Tok->kind != TK_EOF)
-        errorTok(Tok, "extra token");
-    return Nd;
+    Node head = {};
+    Node *cur = &head;
+    while (Tok->kind != TK_EOF)
+    {
+        cur->next = stmt(&Tok, Tok);
+        cur = cur->next;
+    }
+    return head.next;
 }

@@ -48,15 +48,6 @@ void errorTok(Token *T, char *Fmt, ...)
     exit(1);
 }
 
-static int getNum(Token *T)
-{
-    if (T->kind != TK_NUM)
-    {
-        errorTok(T, "expect a number");
-    }
-    return T->Val;
-}
-
 bool equal(Token *T, char *ch)
 {
     return memcmp(T->Loc, ch, T->Len) == 0 && ch[T->Len] == '\0';

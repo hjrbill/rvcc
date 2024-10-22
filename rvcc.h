@@ -52,6 +52,8 @@ Token *tokenize(char *Input);
 // AST 中二叉树节点种类
 typedef enum
 {
+    ND_EXPR_STMT, // 表达式语句
+
     ND_EQ, // ==
     ND_NE, // !=
     ND_LT, // <
@@ -71,8 +73,12 @@ typedef struct Node Node;
 struct Node
 {
     NodeKind kind;
+
+    Node *next; // 指向下一语句
+
     Node *LHS;
     Node *RHS;
+    
     int Val;
 };
 
