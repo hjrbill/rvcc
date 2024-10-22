@@ -156,6 +156,7 @@ typedef enum
   ND_SUB, // -
   ND_MUL, // *
   ND_DIV, // /
+  ND_NEG, // 负号
   ND_INT  // 整形
 } NodeKind;
 
@@ -175,11 +176,20 @@ static Node *newNode(NodeKind kind)
   return node;
 }
 
+// 创建二元运算节点
 static Node *newBinary(NodeKind kind, Node *lhs, Node *rhs)
 {
   Node *node = newNode(kind);
   node->LHS = lhs;
   node->RHS = rhs;
+  return node;
+}
+
+// 创建一元运算节点
+static Node *newUnary(NodeKind kind, Node *lhs)
+{
+  Node *node = newNode(kind);
+  node->LHS = lhs;
   return node;
 }
 
@@ -192,14 +202,16 @@ static Node *newNumNode(int Val)
 }
 
 // expr = mul ("+" mul | "-" mul)*
-// mul = primary ("*" primary | "/" primary)*
+// mul = unary ("*" unary | "/" unary)*
+// unary = ("+" | "-" ) unary | primary
 // primary = "(" expr ")" | num
 static Node *expr(Token **Rest, Token *Tok);
 static Node *mul(Token **Rest, Token *Tok);
+static Node *unary(Token **Rest, Token *Tok);
 static Node *primary(Token **Rest, Token *Tok);
 
 // expr = mul ("+" mul | "-" mul)*
-// @param Rest 需要解析的 Token 的首部
+// @param Rest 用于向上传递仍需要解析的 Token 的首部
 // @param Tok 当前正在解析的 Token
 static Node *expr(Token **Rest, Token *Tok)
 {
@@ -222,21 +234,21 @@ static Node *expr(Token **Rest, Token *Tok)
   }
 }
 
-// mul = primary ("*" primary | "/" primary)*
-// @param Rest 需要解析的 Token 的首部
+// mul = unary ("*" unary | "/" unary)*
+// @param Rest 用于向上传递仍需要解析的 Token 的首部
 // @param Tok 当前正在解析的 Token
 static Node *mul(Token **Rest, Token *Tok)
 {
-  Node *node = primary(&Tok, Tok);
+  Node *node = unary(&Tok, Tok);
   while (true)
   {
     if (equal(Tok, "*"))
     {
-      node = newBinary(ND_MUL, node, primary(&Tok, Tok->next));
+      node = newBinary(ND_MUL, node, unary(&Tok, Tok->next));
     }
     else if (equal(Tok, "/"))
     {
-      node = newBinary(ND_DIV, node, primary(&Tok, Tok->next));
+      node = newBinary(ND_DIV, node, unary(&Tok, Tok->next));
     }
     else
     {
@@ -246,8 +258,24 @@ static Node *mul(Token **Rest, Token *Tok)
   }
 }
 
+// unary = ("+" | "-" ) unary | primary
+// @param Rest 用于向上传递仍需要解析的 Token 的首部
+// @param Tok 当前正在解析的 Token
+static Node *unary(Token **Rest, Token *Tok)
+{
+  if (equal(Tok, "+"))
+  {
+    return unary(Rest, Tok->next);
+  }
+  else if (equal(Tok, "-"))
+  {
+    return newUnary(ND_NEG, unary(Rest, Tok->next));
+  }
+  return primary(Rest, Tok); // Tok 未进行运算，需要解析首部仍为 Rest
+}
+
 // primary = "(" expr ")" | num
-// @param Rest 需要解析的 Token 的首部
+// @param Rest 用于向上传递仍需要解析的 Token 的首部
 // @param Tok 当前正在解析的 Token
 static Node *primary(Token **Rest, Token *Tok)
 {
@@ -280,6 +308,7 @@ static int Depth; // 栈深度
 static void push(void)
 {
   printf("  addi sp, sp, -8\n");
+  // sd rd, rs1, 将寄存器 rd 中的值存储到 rsq 上
   printf("  sd a0, 0(sp)\n");
   Depth++;
 }
@@ -300,6 +329,14 @@ static void genExpr(Node *node)
   {
     // li 为 addi 别名指令，加载一个立即数到寄存器中
     printf("  li a0, %d\n", node->Val);
+    return;
+  }
+
+  if (node->kind == ND_NEG)
+  {
+    genExpr(node->LHS);
+    // neg a0, a0 是 sub a0, x0, a0 的别名，即 a0=0-a0
+    printf("  neg a0, a0\n");
     return;
   }
 
