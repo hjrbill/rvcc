@@ -108,6 +108,25 @@ static Token *skip(Token *T, char *ch)
   return T->next;
 }
 
+// 判断 Str 是否以 SubStr 开头
+static bool startsWith(char *Str, char *SubStr)
+{
+  return strncmp(Str, SubStr, strlen(SubStr)) == 0; // 比较 Str 和 SubStr 的 N 个字符是否相等
+}
+
+static int isPunct(char *P)
+{
+  if (startsWith(P, "==") || startsWith(P, "!=") || startsWith(P, "<=") || startsWith(P, ">="))
+  {
+    return 2;
+  }
+  else if ispunct (*P)
+  {
+    return 1;
+  }
+  return 0;
+}
+
 static Token *lexical_analysis()
 {
   char *P = Input;
@@ -122,7 +141,14 @@ static Token *lexical_analysis()
       continue;
     }
 
-    if (isdigit(*P))
+    int length = isPunct(P);
+    if (length) // 是标点符号
+    {
+      Cur->next = newToken(TK_PUNCT, P, P + length);
+      Cur = Cur->next;
+      P += length;
+    }
+    else if (isdigit(*P))
     {
       char *older = P;
       const int num = strtoul(P, &P, 10);
@@ -130,12 +156,6 @@ static Token *lexical_analysis()
       Cur->next = newToken(TK_NUM, older, P);
       Cur = Cur->next;
       Cur->Val = num;
-    }
-    else if (ispunct(*P)) // 是标点符号
-    {
-      Cur->next = newToken(TK_PUNCT, P, P + 1);
-      Cur = Cur->next;
-      ++P;
     }
     else
     {
@@ -152,12 +172,19 @@ static Token *lexical_analysis()
 
 typedef enum
 {
+  ND_EQ, // ==
+  ND_NE, // !=
+  ND_LT, // <
+  ND_LE, // <=
+
   ND_ADD, // +
   ND_SUB, // -
   ND_MUL, // *
   ND_DIV, // /
+
   ND_NEG, // 负号
-  ND_INT  // 整形
+
+  ND_INT // 整形
 } NodeKind;
 
 typedef struct Node Node;
@@ -201,19 +228,89 @@ static Node *newNumNode(int Val)
   return node;
 }
 
-// expr = mul ("+" mul | "-" mul)*
+// expr = equality
+// equality = relational ("==" relational | "!=" relational)*
+// relational = add ("<" add | "<=" add | ">" add | ">=" add)*
+// add = mul ("+" mul | "-" mul)*
 // mul = unary ("*" unary | "/" unary)*
 // unary = ("+" | "-" ) unary | primary
-// primary = "(" expr ")" | num
+// primary = "(" add ")" | num
 static Node *expr(Token **Rest, Token *Tok);
+static Node *equality(Token **Rest, Token *Tok);
+static Node *relational(Token **Rest, Token *Tok);
+static Node *add(Token **Rest, Token *Tok);
 static Node *mul(Token **Rest, Token *Tok);
 static Node *unary(Token **Rest, Token *Tok);
 static Node *primary(Token **Rest, Token *Tok);
 
-// expr = mul ("+" mul | "-" mul)*
+// expr = equality
 // @param Rest 用于向上传递仍需要解析的 Token 的首部
 // @param Tok 当前正在解析的 Token
 static Node *expr(Token **Rest, Token *Tok)
+{
+  return equality(Rest, Tok);
+}
+
+// equality = relational ("==" relational | "!=" relational)*
+// @param Rest 用于向上传递仍需要解析的 Token 的首部
+// @param Tok 当前正在解析的 Token
+static Node *equality(Token **Rest, Token *Tok)
+{
+  Node *node = relational(&Tok, Tok);
+  while (true)
+  {
+    if (equal(Tok, "=="))
+    {
+      node = newBinary(ND_EQ, node, relational(&Tok, Tok->next));
+    }
+    else if (equal(Tok, "!="))
+    {
+      node = newBinary(ND_NE, node, relational(&Tok, Tok->next));
+    }
+    else
+    {
+      *Rest = Tok;
+      return node;
+    }
+  }
+}
+
+// relational = add ("<" add | "<=" add | ">" add | ">=" add)*
+// @param Rest 用于向上传递仍需要解析的 Token 的首部
+// @param Tok 当前正在解析的 Token
+static Node *relational(Token **Rest, Token *Tok)
+{
+  Node *node = add(&Tok, Tok);
+  while (true)
+  {
+    if (equal(Tok, "<"))
+    {
+      node = newBinary(ND_LT, node, add(&Tok, Tok->next));
+    }
+    else if (equal(Tok, ">"))
+    {
+      node = newBinary(ND_LT, add(&Tok, Tok->next), node); // a > b 等价于 b < a
+    }
+    else if (equal(Tok, "<="))
+    {
+      node = newBinary(ND_LE, node, add(&Tok, Tok->next));
+    }
+    else if (equal(Tok, ">="))
+    {
+      node = newBinary(ND_LE, add(&Tok, Tok->next), node); // a >= b 等价于 b <= a
+    }
+    else
+    {
+      *Rest = Tok;
+      return node;
+    }
+  }
+}
+
+// add = mul ("+" mul | "-" mul)*
+// @param Rest 用于向上传递仍需要解析的 Token 的首部
+// @param Tok 当前正在解析的 Token
+static Node *add(Token **Rest, Token *Tok)
 {
   Node *node = mul(&Tok, Tok);
   while (true)
@@ -348,6 +445,29 @@ static void genExpr(Node *node)
 
   switch (node->kind)
   {
+  case ND_EQ:
+    // xor a, b, c，将 b 异或 c 的结果放入 a
+    // 如果相同，异或后，a0=0，否则 a0=1
+    printf("  xor a0, a0, a1\n");
+    // seqz a, b 判断 b 是否等于 0 并将结果放入 a
+    printf("  seqz a0, a0\n");
+    return;
+  case ND_NE:
+    // a0=a0^a1，异或指令
+    // 异或后如果相同，a0=1，否则 a0=0
+    printf("  xor a0, a0, a1\n");
+    // snez a, b 判断 b 是否不等于 0 并将结果放入 a
+    printf("  snez a0, a0\n");
+    return;
+  case ND_LT:
+    // slt a, b, c，将 b < c 的结果放入 a
+    printf("  slt a0, a0, a1\n");
+    return;
+  case ND_LE:
+    printf("  slt a0, a1, a0\n");
+    // xori a, b, (立即数)，将 b 异或 (立即数) 的结果放入 a
+    printf("  xori a0, a0, 1\n");
+    return;
   case ND_ADD:
     printf("  add a0, a0, a1\n");
     return;
@@ -361,7 +481,7 @@ static void genExpr(Node *node)
     printf("  div a0, a0, a1\n");
     return;
   default:
-    error("invalid expression");
+    error("invalid expression %d", node->kind);
     return;
   }
 }
