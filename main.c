@@ -1,3 +1,4 @@
+#include <assert.h>
 #include <ctype.h>
 #include <stdarg.h>
 #include <stdbool.h>
@@ -5,14 +6,15 @@
 #include <stdlib.h>
 #include <string.h>
 
+static char *Input; // 读入的内容
+
+// 词法分析
 typedef enum
 {
   TK_PUNCT, // 操作符
   TK_NUM,   // 数字
   TK_EOF,   // 终止符
 } TokenKind;
-
-static char *input;
 
 typedef struct Token Token;
 
@@ -29,7 +31,7 @@ struct Token
 
 static Token *newToken(TokenKind kind, char *start, char *end)
 {
-  Token *tok = malloc(sizeof(Token)); // 由于编译器的运行时间较短，可以不回收内存，而是等待程序结束后操作系统的回收，以提升效率
+  Token *tok = calloc(1, sizeof(Token)); // 由于编译器的运行时间较短，可以不回收内存，而是等待程序结束后操作系统的回收，以提升效率
   tok->kind = kind;
   tok->Loc = start;
   tok->Len = end - start;
@@ -52,10 +54,10 @@ static void error(char *Fmt, ...)
 static void verrorAt(char *Cur, char *Fmt, va_list VA)
 {
   // 原文
-  fprintf(stderr, "%s\n", input);
+  fprintf(stderr, "%s\n", Input);
 
   // 定位错误位置
-  int Pos = Cur - input;
+  int Pos = Cur - Input;
   // 输出错误信息
   fprintf(stderr, "%*s", Pos, "");
   fprintf(stderr, "^ ");
@@ -106,9 +108,9 @@ static Token *skip(Token *T, char *ch)
   return T->next;
 }
 
-static Token *parse()
+static Token *lexical_analysis()
 {
-  char *P = input;
+  char *P = Input;
   Token Head = {}; // 空头指针，避免处理边界问题
   Token *Cur = &Head;
 
@@ -129,7 +131,7 @@ static Token *parse()
       Cur = Cur->next;
       Cur->Val = num;
     }
-    else if (*P == '+' || *P == '-')
+    else if (ispunct(*P)) // 是标点符号
     {
       Cur->next = newToken(TK_PUNCT, P, P + 1);
       Cur = Cur->next;
@@ -144,6 +146,189 @@ static Token *parse()
   return Head.next;
 }
 
+//
+// 语法解析，生成 AST（抽象语法树）
+//
+
+typedef enum
+{
+  ND_ADD, // +
+  ND_SUB, // -
+  ND_MUL, // *
+  ND_DIV, // /
+  ND_INT  // 整形
+} NodeKind;
+
+typedef struct Node Node;
+struct Node
+{
+  NodeKind kind;
+  Node *LHS;
+  Node *RHS;
+  int Val;
+};
+
+static Node *newNode(NodeKind kind)
+{
+  Node *node = calloc(1, sizeof(Node));
+  node->kind = kind;
+  return node;
+}
+
+static Node *newBinary(NodeKind kind, Node *lhs, Node *rhs)
+{
+  Node *node = newNode(kind);
+  node->LHS = lhs;
+  node->RHS = rhs;
+  return node;
+}
+
+// 创建数字（叶子）节点
+static Node *newNumNode(int Val)
+{
+  Node *node = newNode(ND_INT);
+  node->Val = Val;
+  return node;
+}
+
+// expr = mul ("+" mul | "-" mul)*
+// mul = primary ("*" primary | "/" primary)*
+// primary = "(" expr ")" | num
+static Node *expr(Token **Rest, Token *Tok);
+static Node *mul(Token **Rest, Token *Tok);
+static Node *primary(Token **Rest, Token *Tok);
+
+// expr = mul ("+" mul | "-" mul)*
+// @param Rest 需要解析的 Token 的首部
+// @param Tok 当前正在解析的 Token
+static Node *expr(Token **Rest, Token *Tok)
+{
+  Node *node = mul(&Tok, Tok);
+  while (true)
+  {
+    if (equal(Tok, "+"))
+    {
+      node = newBinary(ND_ADD, node, mul(&Tok, Tok->next));
+    }
+    else if (equal(Tok, "-"))
+    {
+      node = newBinary(ND_SUB, node, mul(&Tok, Tok->next));
+    }
+    else
+    {
+      *Rest = Tok;
+      return node;
+    }
+  }
+}
+
+// mul = primary ("*" primary | "/" primary)*
+// @param Rest 需要解析的 Token 的首部
+// @param Tok 当前正在解析的 Token
+static Node *mul(Token **Rest, Token *Tok)
+{
+  Node *node = primary(&Tok, Tok);
+  while (true)
+  {
+    if (equal(Tok, "*"))
+    {
+      node = newBinary(ND_MUL, node, primary(&Tok, Tok->next));
+    }
+    else if (equal(Tok, "/"))
+    {
+      node = newBinary(ND_DIV, node, primary(&Tok, Tok->next));
+    }
+    else
+    {
+      *Rest = Tok;
+      return node;
+    }
+  }
+}
+
+// primary = "(" expr ")" | num
+// @param Rest 需要解析的 Token 的首部
+// @param Tok 当前正在解析的 Token
+static Node *primary(Token **Rest, Token *Tok)
+{
+  if (equal(Tok, "("))
+  {
+    Node *node = expr(&Tok, Tok->next);
+    *Rest = skip(Tok, ")");
+    return node;
+  }
+  else if (Tok->kind == TK_NUM)
+  {
+    Node *node = newNumNode(getNum(Tok));
+    *Rest = Tok->next;
+    return node;
+  }
+  else
+  {
+    errorTok(Tok, "expected an expression");
+    return NULL;
+  }
+}
+
+//
+// 语义分析与代码生成
+//
+
+static int Depth; // 栈深度
+
+// 将 a0 压入栈
+static void push(void)
+{
+  printf("  addi sp, sp, -8\n");
+  printf("  sd a0, 0(sp)\n");
+  Depth++;
+}
+
+// 从栈中取出元素并放到 Reg
+static void pop(char *Reg)
+{
+  // ld rd, rs1，从内存中加载一个 32 位或 64 位的 rs1(操作数) 到寄存器 rd 中
+  printf("  ld %s, 0(sp)\n", Reg);
+  // addi rd, rs1, imm 表示 rd = rs1 + imm
+  printf("  addi sp, sp, 8\n");
+  Depth--;
+}
+
+static void genExpr(Node *node)
+{
+  if (node->kind == ND_INT) // 是叶子节点
+  {
+    // li 为 addi 别名指令，加载一个立即数到寄存器中
+    printf("  li a0, %d\n", node->Val);
+    return;
+  }
+
+  // 由于优先级问题，先遍历右子树
+  genExpr(node->RHS);
+  push();
+  genExpr(node->LHS);
+  pop("a1"); // 取回右子树结果
+
+  switch (node->kind)
+  {
+  case ND_ADD:
+    printf("  add a0, a0, a1\n");
+    return;
+  case ND_SUB:
+    printf("  sub a0, a0, a1\n");
+    return;
+  case ND_MUL:
+    printf("  mul a0, a0,  a1\n");
+    return;
+  case ND_DIV:
+    printf("  div a0, a0, a1\n");
+    return;
+  default:
+    error("invalid expression");
+    return;
+  }
+}
+
 int main(int Argc, char **Argv)
 {
   if (Argc != 2)
@@ -151,34 +336,23 @@ int main(int Argc, char **Argv)
     error("%s: invalid number of arguments", Argv[0]);
   }
 
-  input = Argv[1];
-  // 假设 Argv[1] 是运算表达式
-  Token *T = parse();
+  Input = Argv[1];
+  // 生成终结符流
+  Token *T = lexical_analysis();
 
-  printf("  .globl main\n");
-  printf("main:\n");
-  // li 为 addi 别名指令，加载一个立即数到寄存器中
-  printf("  li a0, %d\n", getNum(T)); // 假设算式为 num (op num) (op num)...的形式
-  T = T->next;
-  while (T->kind != TK_EOF)
+  Node *Node = expr(&T, T);
+  if (T->kind == TK_EOF) // 语法分析后，token 应走到终止节点
   {
-    if (equal(T, "+"))
-    {
-      T = T->next;
-      // addi rd, rs1, imm 表示 rd = rs1 + imm
-      printf("  addi a0, a0, %d\n", getNum(T));
-      T = T->next;
-    }
-    else if (equal(T, "-"))
-    {
-      T = T->next;
-      // addi 中 imm 为有符号立即数，所以减法表示为 rd = rs1 + (-imm)
-      printf("  addi a0, a0, -%d\n", getNum(T));
-      T = T->next;
-    }
-  }
-  // ret 为 jalr x0, x1, 0 别名指令，用于返回子程序
-  printf("  ret\n");
+    printf("  .globl main\n");
+    printf("main:\n");
+    genExpr(Node); // 遍历 AST 树生成汇编
+    // ret 为 jalr x0, x1, 0 别名指令，用于返回子程序
+    printf("  ret\n");
 
-  return 0;
+    return 0;
+  }
+  else
+  {
+    errorTok(T, "extra token");
+  }
 }
