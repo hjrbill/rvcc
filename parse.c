@@ -102,8 +102,7 @@ static Node *compoundStmt(Token **Rest, Token *T)
         Cur->next = stmt(&T, T);
         Cur = Cur->next;
     }
-
-    *Rest = T->next;
+    *Rest = skip(T, "}");
 
     Node *node = newNode(ND_BLOCK);
     node->Body = Head.next; // 代码块节点的 body 存储了该代码块的语句
@@ -112,28 +111,34 @@ static Node *compoundStmt(Token **Rest, Token *T)
 }
 
 // stmt = "return" expr ";" | "{" compoundStmt | exprStmt
-static Node *stmt(Token **Rest, Token *Tok)
+static Node *stmt(Token **Rest, Token *T)
 {
     // return expr;
-    if (equal(Tok, "return"))
+    if (equal(T, "return"))
     {
-        Node *node = newUnary(ND_RETURN, expr(&Tok, Tok->next));
-        *Rest = skip(Tok, ";");
+        Node *node = newUnary(ND_RETURN, expr(&T, T->next));
+        *Rest = skip(T, ";");
         return node;
     }
 
-    if (equal(Tok, "{"))
+    if (equal(T, "{"))
     {
-        return compoundStmt(Rest, Tok->next);
+        return compoundStmt(Rest, T->next);
     }
 
     // expr;
-    return exprStmt(Rest, Tok);
+    return exprStmt(Rest, T);
 }
 
-// exprStmt = expr ";"
+// exprStmt = expr? ";"
 static Node *exprStmt(Token **Rest, Token *Tok)
 {
+    if (equal(Tok, ";")) // 处理空语句
+    {
+        *Rest = skip(Tok, ";");
+        return newNode(ND_BLOCK);
+    }
+
     Node *node = newUnary(ND_EXPR_STMT, expr(&Tok, Tok));
     *Rest = skip(Tok, ";");
     return node;
