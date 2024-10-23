@@ -21,21 +21,46 @@ static void pop(char *Reg)
     Depth--;
 }
 
+// 计算给定节点的绝对地址，如果报错，说明节点不在内存中
+static void getAddr(Node *node)
+{
+    if (node->kind == ND_VAR)
+    {
+        // 取出变量相对于 fp 的偏移量
+        printf("  addi a0, fp, %d\n", node->Var->offset);
+        return;
+    }
+    error("not an lvalue");
+}
+
 static void genExpr(Node *node)
 {
-    if (node->kind == ND_INT) // 是叶子节点
+    switch (node->kind)
     {
+    case ND_INT: // 是整型
         // li 为 addi 别名指令，加载一个立即数到寄存器中
         printf("  li a0, %d\n", node->Val);
         return;
-    }
-
-    if (node->kind == ND_NEG)
-    {
+    case ND_NEG: // 是取反
         genExpr(node->LHS);
         // neg a0, a0 是 sub a0, x0, a0 的别名，即 a0=0-a0
         printf("  neg a0, a0\n");
         return;
+    case ND_VAR: // 是变量
+        // 计算出变量的地址，然后存入 a0
+        getAddr(node);
+        // 访问 a0 地址中存储的数据，存入到 a0 当中
+        printf("  ld a0, 0(a0)\n");
+        return;
+    case ND_ASSIGN:         // 是赋值
+        getAddr(node->LHS); // 左边为被赋值的地址
+        push();
+        genExpr(node->RHS); // 右边为赋予的值
+        pop("a1");
+        printf("  sd a0, 0(a1)\n");
+        return;
+    default:
+        break;
     }
 
     // 由于优先级问题，先遍历右子树
@@ -97,14 +122,49 @@ static void genStmt(Node *node)
     error("invalid statement %d", node->kind);
 }
 
-void codegen(Node *node)
+// 将 N 对齐到 Align 的整数倍
+static int alignTo(int N, int Align)
 {
+    return (N + Align - 1) / Align * Align;
+}
+
+static void assignLVarOffsets(Func *Prog)
+{
+    int offset = 0;
+    for (Obj *var = Prog->locals; var; var = var->next)
+    {
+        offset += 8;
+        var->offset = -offset;
+    }
+    Prog->stackSize = alignTo(offset, 16);
+}
+
+void codegen(Func *fn)
+{
+    assignLVarOffsets(fn);
     printf("  .globl main\n");
     printf("main:\n");
-    for (Node *Nd = node; Nd; Nd = Nd->next)
+
+    // Prologue, 预处理
+    // 将 fp 压入栈中，保存 fp 的值
+    printf("  addi sp, sp, -8\n");
+    printf("  sd fp, 0(sp)\n");
+    // 将 sp 写入 fp
+    printf("  mv fp, sp\n");
+    // 26 个字母*8 字节=208 字节，栈腾出 208 字节的空间
+    printf("  addi sp, sp, %d\n", fn->stackSize);
+
+    for (Node *Nd = fn->body; Nd; Nd = Nd->next)
     {
         genStmt(Nd);
         assert(Depth == 0);
     }
+
+    // Epilogue，后处理
+    // mv a, b. 将寄存器 b 中的值存储到寄存器 a 中
+    printf("  mv sp, fp\n");
+    printf("  ld fp, 0(sp)\n");   // 将栈顶元素（fp）弹出并存储到 fp
+    printf("  addi sp, sp, 8\n"); // 移动 sp 到初始态，消除 fp 的影响
+
     printf("  ret\n");
 }

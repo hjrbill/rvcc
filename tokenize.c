@@ -91,6 +91,22 @@ static int isPunct(char *P)
     return 0;
 }
 
+// 判断是否符号标识符首字母
+static bool isIdentHead(char c)
+{
+    if ('a' <= c && c <= 'z' || c == '_')
+    {
+        return true;
+    }
+    return false;
+}
+
+// 判断是否符号标识符的非首字母部分
+static bool isIdentBody(char c)
+{
+    return isIdentHead(c) || ('0' <= c && c <= '9');
+}
+
 Token *tokenize(char *P)
 {
     Input = P;
@@ -112,12 +128,22 @@ Token *tokenize(char *P)
             Cur = Cur->next;
             P += length;
         }
+        else if (isIdentHead(*P))
+        {
+            char *start = P;
+            do
+            {
+                ++P;
+            } while (isIdentBody(*P));
+            Cur->next = newToken(TK_IDENT, start, P );
+            Cur = Cur->next;
+        }
         else if (isdigit(*P))
         {
-            char *older = P;
+            char *start = P;
             const int num = strtoul(P, &P, 10);
 
-            Cur->next = newToken(TK_NUM, older, P);
+            Cur->next = newToken(TK_NUM, start, P);
             Cur = Cur->next;
             Cur->Val = num;
         }

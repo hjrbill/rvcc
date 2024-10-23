@@ -14,9 +14,9 @@ int main(int Argc, char **Argv)
   // 生成终结符流
   Token *T = tokenize(Argv[1]);
 
-  Node *Node = parse(T);
+  Func *fn = parse(T);
 
-  codegen(Node);
-  
+  codegen(fn);
+
   return 0;
 }
