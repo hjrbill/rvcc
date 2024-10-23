@@ -116,6 +116,12 @@ static void genStmt(Node *node)
 {
     switch (node->kind)
     {
+    case ND_BLOCK:
+        for (Node *n = node->Body; n; n = n->next)
+        {
+            genStmt(n);
+        }
+        return;
     case ND_RETURN:
         genExpr(node->LHS);
         // 无条件跳转语句，跳转到.L.return 段
@@ -164,11 +170,9 @@ void codegen(Func *fn)
     // 26 个字母*8 字节=208 字节，栈腾出 208 字节的空间
     printf("  addi sp, sp, %d\n", fn->stackSize);
 
-    for (Node *Nd = fn->body; Nd; Nd = Nd->next)
-    {
-        genStmt(Nd);
-        assert(Depth == 0);
-    }
+    // 生成语句链表的代码
+    genStmt(fn->body);
+    assert(Depth == 0);
 
     // Epilogue，后处理
     printf(".L.return:\n"); // 输出 return 段标签

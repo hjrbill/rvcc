@@ -26,8 +26,9 @@ static Obj *newVar(char *name)
     return var;
 }
 
-// program = stmt*
-// stmt = exprStmt | "return" expr ";"
+// program = "{" compoundStmt
+// compoundStmt = stmt* "}"
+// stmt = "return" expr ";" | "{" compoundStmt | exprStmt
 // exprStmt = expr ";"
 // expr = assign
 // assign = equality ("=" assign)?
@@ -36,7 +37,8 @@ static Obj *newVar(char *name)
 // add = mul ("+" mul | "-" mul)*
 // mul = unary ("*" unary | "/" unary)*
 // unary = ("+" | "-" ) unary | primary
-// primary = "(" add ")" | num
+// primary = "(" expr ")" | ident | num
+static Node *compoundStmt(Token **Rest, Token *Tok);
 static Node *stmt(Token **Rest, Token *Tok);
 static Node *exprStmt(Token **Rest, Token *Tok);
 static Node *expr(Token **Rest, Token *Tok);
@@ -88,7 +90,28 @@ static Node *newNumNode(int Val)
     return node;
 }
 
-// stmt = exprStmt | "return" expr ";"
+// compoundStmt = stmt* "}"
+// 解析复合语句
+static Node *compoundStmt(Token **Rest, Token *T)
+{
+    Node Head = {};
+    Node *Cur = &Head;
+
+    while (!equal(T, "}"))
+    {
+        Cur->next = stmt(&T, T);
+        Cur = Cur->next;
+    }
+
+    *Rest = T->next;
+
+    Node *node = newNode(ND_BLOCK);
+    node->Body = Head.next; // 代码块节点的 body 存储了该代码块的语句
+
+    return node;
+}
+
+// stmt = "return" expr ";" | "{" compoundStmt | exprStmt
 static Node *stmt(Token **Rest, Token *Tok)
 {
     // return expr;
@@ -97,6 +120,11 @@ static Node *stmt(Token **Rest, Token *Tok)
         Node *node = newUnary(ND_RETURN, expr(&Tok, Tok->next));
         *Rest = skip(Tok, ";");
         return node;
+    }
+
+    if (equal(Tok, "{"))
+    {
+        return compoundStmt(Rest, Tok->next);
     }
 
     // expr;
@@ -289,20 +317,14 @@ static Node *primary(Token **Rest, Token *Tok)
 }
 
 // 语法解析入口函数
-// program = stmt*
+// program = "{" compoundStmt
 Func *parse(Token *Tok)
 {
-    Node head = {};
-    Node *cur = &head;
-    while (Tok->kind != TK_EOF)
-    {
-        cur->next = stmt(&Tok, Tok);
-        cur = cur->next;
-    }
+    Tok = skip(Tok, "{"); // 跳过 " { "
 
     Func *fn = calloc(1, sizeof(Func));
+    fn->body = compoundStmt(&Tok, Tok);
     fn->locals = Locals;
-    fn->body = head.next;
-
+    
     return fn;
 }
