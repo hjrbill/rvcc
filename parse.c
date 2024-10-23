@@ -1,13 +1,46 @@
 #include "rvcc.h"
 
-// expr = equality
+Obj *Locals; // 存储当前解析的函数的局部变量
+
+static Obj *FindVarByName(Token *Tok)
+{
+    for (Obj *p = Locals; p; p = p->next)
+    {
+        if (strlen(p->name) == Tok->Len && !strncmp(p->name, Tok->Loc, Tok->Len))
+        {
+            return p;
+        }
+    }
+    return NULL;
+}
+
+static Obj *newVar(char *name)
+{
+    Obj *var = calloc(1, sizeof(Obj));
+    var->name = name;
+
+    // 将新变量插入到 Locals 的头部
+    var->next = Locals;
+    Locals = var;
+
+    return var;
+}
+
+// program = stmt*
+// stmt = exprStmt | "return" expr ";"
+// exprStmt = expr ";"
+// expr = assign
+// assign = equality ("=" assign)?
 // equality = relational ("==" relational | "!=" relational)*
 // relational = add ("<" add | "<=" add | ">" add | ">=" add)*
 // add = mul ("+" mul | "-" mul)*
 // mul = unary ("*" unary | "/" unary)*
 // unary = ("+" | "-" ) unary | primary
 // primary = "(" add ")" | num
+static Node *stmt(Token **Rest, Token *Tok);
+static Node *exprStmt(Token **Rest, Token *Tok);
 static Node *expr(Token **Rest, Token *Tok);
+static Node *assign(Token **Rest, Token *Tok);
 static Node *equality(Token **Rest, Token *Tok);
 static Node *relational(Token **Rest, Token *Tok);
 static Node *add(Token **Rest, Token *Tok);
@@ -39,6 +72,14 @@ static Node *newUnary(NodeKind kind, Node *lhs)
     return node;
 }
 
+// 创建变量节点
+static Node *newVarNode(Obj *var)
+{
+    Node *node = newNode(ND_VAR);
+    node->Var = var;
+    return node;
+}
+
 // 创建数字（叶子）节点
 static Node *newNumNode(int Val)
 {
@@ -47,12 +88,49 @@ static Node *newNumNode(int Val)
     return node;
 }
 
-// expr = equality
+// stmt = exprStmt | "return" expr ";"
+static Node *stmt(Token **Rest, Token *Tok)
+{
+    // return expr;
+    if (equal(Tok, "return"))
+    {
+        Node *node = newUnary(ND_RETURN, expr(&Tok, Tok->next));
+        *Rest = skip(Tok, ";");
+        return node;
+    }
+
+    // expr;
+    return exprStmt(Rest, Tok);
+}
+
+// exprStmt = expr ";"
+static Node *exprStmt(Token **Rest, Token *Tok)
+{
+    Node *node = newUnary(ND_EXPR_STMT, expr(&Tok, Tok));
+    *Rest = skip(Tok, ";");
+    return node;
+}
+
+// expr = assign
 // @param Rest 用于向上传递仍需要解析的 Token 的首部
 // @param Tok 当前正在解析的 Token
 static Node *expr(Token **Rest, Token *Tok)
 {
-    return equality(Rest, Tok);
+    return assign(Rest, Tok);
+}
+
+// assign = equality ("=" assign)?
+// @param Rest 用于向上传递仍需要解析的 Token 的首部
+// @param Tok 当前正在解析的 Token
+static Node *assign(Token **Rest, Token *Tok)
+{
+    Node *node = equality(&Tok, Tok);
+    if (equal(Tok, "=")) // 处理递归赋值，如："a=b=1;"
+    {
+        node = newBinary(ND_ASSIGN, node, assign(&Tok, Tok->next));
+    }
+    *Rest = Tok;
+    return node;
 }
 
 // equality = relational ("==" relational | "!=" relational)*
@@ -175,7 +253,7 @@ static Node *unary(Token **Rest, Token *Tok)
     return primary(Rest, Tok); // Tok 未进行运算，需要解析首部仍为 Rest
 }
 
-// primary = "(" expr ")" | num
+// primary = "(" expr ")" | num | ident
 // @param Rest 用于向上传递仍需要解析的 Token 的首部
 // @param Tok 当前正在解析的 Token
 static Node *primary(Token **Rest, Token *Tok)
@@ -184,6 +262,17 @@ static Node *primary(Token **Rest, Token *Tok)
     {
         Node *node = expr(&Tok, Tok->next);
         *Rest = skip(Tok, ")");
+        return node;
+    }
+    else if (Tok->kind == TK_IDENT)
+    {
+        Obj *var = FindVarByName(Tok);
+        if (var == NULL)
+        {
+            var = newVar(strndup(Tok->Loc, Tok->Len)); // strndup() 复制字符串的指定长度
+        }
+        Node *node = newVarNode(var);
+        *Rest = Tok->next;
         return node;
     }
     else if (Tok->kind == TK_NUM)
@@ -199,10 +288,21 @@ static Node *primary(Token **Rest, Token *Tok)
     }
 }
 
-Node *parse(Token *Tok)
+// 语法解析入口函数
+// program = stmt*
+Func *parse(Token *Tok)
 {
-    Node *Nd = expr(&Tok, Tok);
-    if (Tok->kind != TK_EOF)
-        errorTok(Tok, "extra token");
-    return Nd;
+    Node head = {};
+    Node *cur = &head;
+    while (Tok->kind != TK_EOF)
+    {
+        cur->next = stmt(&Tok, Tok);
+        cur = cur->next;
+    }
+
+    Func *fn = calloc(1, sizeof(Func));
+    fn->locals = Locals;
+    fn->body = head.next;
+
+    return fn;
 }

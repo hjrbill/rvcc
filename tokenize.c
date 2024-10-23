@@ -48,15 +48,6 @@ void errorTok(Token *T, char *Fmt, ...)
     exit(1);
 }
 
-static int getNum(Token *T)
-{
-    if (T->kind != TK_NUM)
-    {
-        errorTok(T, "expect a number");
-    }
-    return T->Val;
-}
-
 bool equal(Token *T, char *ch)
 {
     return memcmp(T->Loc, ch, T->Len) == 0 && ch[T->Len] == '\0';
@@ -100,6 +91,34 @@ static int isPunct(char *P)
     return 0;
 }
 
+// 判断是否符号标识符首字母
+static bool isIdentHead(char c)
+{
+    if ('a' <= c && c <= 'z' || c == '_')
+    {
+        return true;
+    }
+    return false;
+}
+
+// 判断是否符号标识符的非首字母部分
+static bool isIdentBody(char c)
+{
+    return isIdentHead(c) || ('0' <= c && c <= '9');
+}
+
+// 将为关键字的 TK_IDENT 节点转换为 TK_KEYWORD 节点
+static void convertKeywords(Token *Tok)
+{
+    for (Token *t = Tok; t; t = t->next)
+    {
+        if (equal(t, "return"))
+        {
+            t->kind = TK_KEYWORD;
+        }
+    }
+}
+
 Token *tokenize(char *P)
 {
     Input = P;
@@ -121,12 +140,22 @@ Token *tokenize(char *P)
             Cur = Cur->next;
             P += length;
         }
+        else if (isIdentHead(*P)) // 解析标记符或关键字
+        {
+            char *start = P;
+            do
+            {
+                ++P;
+            } while (isIdentBody(*P));
+            Cur->next = newToken(TK_IDENT, start, P);
+            Cur = Cur->next;
+        }
         else if (isdigit(*P))
         {
-            char *older = P;
+            char *start = P;
             const int num = strtoul(P, &P, 10);
 
-            Cur->next = newToken(TK_NUM, older, P);
+            Cur->next = newToken(TK_NUM, start, P);
             Cur = Cur->next;
             Cur->Val = num;
         }
@@ -135,6 +164,9 @@ Token *tokenize(char *P)
             errorAt(P, "invalid token");
         }
     }
+
     Cur->next = newToken(TK_EOF, P, P); // 添加终止节点
+
+    convertKeywords(Cur);
     return Head.next;
 }

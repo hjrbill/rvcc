@@ -1,3 +1,6 @@
+// 使用 POSIX.1 标准 (引入需要的 strndup 函数)
+#define _POSIX_C_SOURCE 200809L
+
 #include <assert.h>
 #include <ctype.h>
 #include <stdarg.h>
@@ -15,10 +18,12 @@
 //
 typedef enum
 {
-    TK_PUNCT, // 操作符
-    TK_NUM,   // 数字
-    TK_EOF,   // 终止符
-} TokenKind;  // 终结符
+    TK_IDENT,   // 标识符，变量名，函数名等
+    TK_PUNCT,   // 操作符
+    TK_KEYWORD, // 关键字
+    TK_NUM,     // 数字
+    TK_EOF,     // 终止符
+} TokenKind;    // 终结符
 
 typedef struct Token Token;
 
@@ -52,6 +57,14 @@ Token *tokenize(char *Input);
 // AST 中二叉树节点种类
 typedef enum
 {
+    ND_RETURN, // 返回
+
+    ND_EXPR_STMT, // 表达式语句
+    ND_VAR,       // 变量
+
+    ND_ASSIGN, // 赋值
+    ND_NEG,    // 负号
+
     ND_EQ, // ==
     ND_NE, // !=
     ND_LT, // <
@@ -62,26 +75,47 @@ typedef enum
     ND_MUL, // *
     ND_DIV, // /
 
-    ND_NEG, // 负号
-
     ND_INT // 整形
 } NodeKind;
 
 typedef struct Node Node;
+
+typedef struct Obj Obj;
+struct Obj
+{
+    Obj *next; // 下一个对象
+
+    char *name; // 对象名
+    int offset; // 相对于 fp 的偏移量
+};
+
 struct Node
 {
     NodeKind kind;
+
+    Node *next; // 指向下一语句
+
     Node *LHS;
     Node *RHS;
-    int Val;
+
+    Obj *Var; // ND_VAR 类型的变量名
+    int Val;  // ND_INT 类型的值
+};
+
+typedef struct Func Func;
+struct Func
+{
+    Node *body;    // 函数体
+    Obj *locals;   // 函数的局部变量
+    int stackSize; // 栈深度
 };
 
 // 语法解析入口函数
-Node *parse(Token *Tok);
+Func *parse(Token *Tok);
 
 //
 // 语义分析与代码生成
 //
 
 // 代码生成入口函数
-void codegen(Node *node);
+void codegen(Func *node);
