@@ -27,7 +27,7 @@ static Obj *newVar(char *name)
 }
 
 // program = stmt*
-// stmt = exprStmt
+// stmt = exprStmt | "return" expr ";"
 // exprStmt = expr ";"
 // expr = assign
 // assign = equality ("=" assign)?
@@ -88,9 +88,18 @@ static Node *newNumNode(int Val)
     return node;
 }
 
-// stmt = exprStmt
+// stmt = exprStmt | "return" expr ";"
 static Node *stmt(Token **Rest, Token *Tok)
 {
+    // return expr;
+    if (equal(Tok, "return"))
+    {
+        Node *node = newUnary(ND_RETURN, expr(&Tok, Tok->next));
+        *Rest = skip(Tok, ";");
+        return node;
+    }
+
+    // expr;
     return exprStmt(Rest, Tok);
 }
 
@@ -292,7 +301,7 @@ Func *parse(Token *Tok)
     }
 
     Func *fn = calloc(1, sizeof(Func));
-    fn->locals= Locals;
+    fn->locals = Locals;
     fn->body = head.next;
 
     return fn;

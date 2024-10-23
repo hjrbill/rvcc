@@ -114,11 +114,21 @@ static void genExpr(Node *node)
 
 static void genStmt(Node *node)
 {
-    if (node->kind == ND_EXPR_STMT)
+    switch (node->kind)
     {
+    case ND_RETURN:
+        genExpr(node->LHS);
+        // 无条件跳转语句，跳转到.L.return 段
+        // j offset 是 jal x0, offset 的别名指令
+        printf("  j .L.return\n");
+        return;
+    case ND_EXPR_STMT:
         genExpr(node->LHS);
         return;
+    default:
+        break;
     }
+
     error("invalid statement %d", node->kind);
 }
 
@@ -136,7 +146,7 @@ static void assignLVarOffsets(Func *Prog)
         offset += 8;
         var->offset = -offset;
     }
-    Prog->stackSize = alignTo(offset, 16);
+    Prog->stackSize = alignTo(offset, 16); // 将栈对齐到 16 字节（内存对齐），优化处理器访问
 }
 
 void codegen(Func *fn)
@@ -149,8 +159,8 @@ void codegen(Func *fn)
     // 将 fp 压入栈中，保存 fp 的值
     printf("  addi sp, sp, -8\n");
     printf("  sd fp, 0(sp)\n");
-    // 将 sp 写入 fp
-    printf("  mv fp, sp\n");
+    // mv a, b. 将寄存器 b 中的值存储到寄存器 a 中
+    printf("  mv fp, sp\n"); // 将 sp 写入 fp
     // 26 个字母*8 字节=208 字节，栈腾出 208 字节的空间
     printf("  addi sp, sp, %d\n", fn->stackSize);
 
@@ -161,7 +171,8 @@ void codegen(Func *fn)
     }
 
     // Epilogue，后处理
-    // mv a, b. 将寄存器 b 中的值存储到寄存器 a 中
+    printf(".L.return:\n"); // 输出 return 段标签
+
     printf("  mv sp, fp\n");
     printf("  ld fp, 0(sp)\n");   // 将栈顶元素（fp）弹出并存储到 fp
     printf("  addi sp, sp, 8\n"); // 移动 sp 到初始态，消除 fp 的影响

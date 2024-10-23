@@ -107,6 +107,18 @@ static bool isIdentBody(char c)
     return isIdentHead(c) || ('0' <= c && c <= '9');
 }
 
+// 将为关键字的 TK_IDENT 节点转换为 TK_KEYWORD 节点
+static void convertKeywords(Token *Tok)
+{
+    for (Token *t = Tok; t; t = t->next)
+    {
+        if (equal(t, "return"))
+        {
+            t->kind = TK_KEYWORD;
+        }
+    }
+}
+
 Token *tokenize(char *P)
 {
     Input = P;
@@ -128,14 +140,14 @@ Token *tokenize(char *P)
             Cur = Cur->next;
             P += length;
         }
-        else if (isIdentHead(*P))
+        else if (isIdentHead(*P)) // 解析标记符或关键字
         {
             char *start = P;
             do
             {
                 ++P;
             } while (isIdentBody(*P));
-            Cur->next = newToken(TK_IDENT, start, P );
+            Cur->next = newToken(TK_IDENT, start, P);
             Cur = Cur->next;
         }
         else if (isdigit(*P))
@@ -152,6 +164,9 @@ Token *tokenize(char *P)
             errorAt(P, "invalid token");
         }
     }
+
     Cur->next = newToken(TK_EOF, P, P); // 添加终止节点
+
+    convertKeywords(Cur);
     return Head.next;
 }

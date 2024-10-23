@@ -18,11 +18,12 @@
 //
 typedef enum
 {
-    TK_IDENT, // 标识符，变量名，函数名等
-    TK_PUNCT, // 操作符
-    TK_NUM,   // 数字
-    TK_EOF,   // 终止符
-} TokenKind;  // 终结符
+    TK_IDENT,   // 标识符，变量名，函数名等
+    TK_PUNCT,   // 操作符
+    TK_KEYWORD, // 关键字
+    TK_NUM,     // 数字
+    TK_EOF,     // 终止符
+} TokenKind;    // 终结符
 
 typedef struct Token Token;
 
@@ -56,6 +57,8 @@ Token *tokenize(char *Input);
 // AST 中二叉树节点种类
 typedef enum
 {
+    ND_RETURN, // 返回
+
     ND_EXPR_STMT, // 表达式语句
     ND_VAR,       // 变量
 
