@@ -62,6 +62,14 @@ static Node *newNode(NodeKind kind, Token *Tok)
     return node;
 }
 
+// 创建数字（叶子）节点
+static Node *newNumNode(Token *Tok, int Val)
+{
+    Node *node = newNode(ND_INT, Tok);
+    node->Val = Val;
+    return node;
+}
+
 // 创建二元运算节点
 static Node *newBinary(NodeKind kind, Token *Tok, Node *lhs, Node *rhs)
 {
@@ -69,6 +77,69 @@ static Node *newBinary(NodeKind kind, Token *Tok, Node *lhs, Node *rhs)
     node->LHS = lhs;
     node->RHS = rhs;
     return node;
+}
+
+// 特殊处理加法运算节点，以处理各类型的转换问题
+static Node *newAddBinary(NodeKind kind, Token *Tok, Node *LHS, Node *RHS)
+{
+    // 提前为左右部添加类型
+    addType(LHS);
+    addType(RHS);
+
+    // 拒绝处理指针 + 指针
+    if (LHS->type->base && RHS->type->base)
+    {
+        errorTok(Tok, "invalid operands");
+    }
+
+    // num + num
+    if (isInteger(LHS->type) && isInteger(RHS->type))
+    {
+        return newBinary(ND_ADD, Tok, LHS, RHS);
+    }
+
+    // num+ptr
+    if (isInteger(LHS->type) && RHS->type->base)
+    {
+        Node *Tmp = LHS;
+        LHS = RHS;
+        RHS = Tmp;
+    }
+    // ptr + num
+    RHS = newBinary(ND_MUL, Tok, RHS, newNumNode(Tok, 8)); // ptr + 1 == ptr + 1*sizeof(ptr->base), 基类暂时只支持 8 个字节的 int
+    return newBinary(ND_ADD, Tok, LHS, RHS);
+}
+
+// 特殊处理减法运算节点，以处理各类型的转换问题
+static Node *newSubBinary(NodeKind kind, Token *Tok, Node *LHS, Node *RHS)
+{
+    // 提前为左右部添加类型
+    addType(LHS);
+    addType(RHS);
+
+    // 指针 - 指针
+    if (LHS->type->base && RHS->type->base)
+    {
+        Node *node = newBinary(ND_SUB, Tok, LHS, RHS);
+        node->type = TyInt;
+        return newBinary(ND_DIV, Tok, node, newNumNode(Tok, 8));
+    }
+
+    // num - num
+    if (isInteger(LHS->type) && isInteger(RHS->type))
+    {
+        return newBinary(ND_SUB, Tok, LHS, RHS);
+    }
+
+    // ptr - num
+    if (LHS->type->base && isInteger(RHS->type))
+    {
+        RHS = newBinary(ND_MUL, Tok, RHS, newNumNode(Tok, 8));
+        return newBinary(ND_SUB, Tok, LHS, RHS);
+    }
+
+    errorTok(Tok, "invalid operands");
+    return NULL;
 }
 
 // 创建一元运算节点
@@ -87,14 +158,6 @@ static Node *newVarNode(Token *Tok, Obj *var)
     return node;
 }
 
-// 创建数字（叶子）节点
-static Node *newNumNode(Token *Tok, int Val)
-{
-    Node *node = newNode(ND_INT, Tok);
-    node->Val = Val;
-    return node;
-}
-
 // compoundStmt = stmt* "}"
 // 解析复合语句
 static Node *compoundStmt(Token **Rest, Token *T)
@@ -106,6 +169,7 @@ static Node *compoundStmt(Token **Rest, Token *T)
     {
         Cur->next = stmt(&T, T);
         Cur = Cur->next;
+        addType(Cur); // 为节点添加类型信息
     }
     *Rest = skip(T, "}");
 
@@ -291,11 +355,11 @@ static Node *add(Token **Rest, Token *Tok)
     {
         if (equal(Tok, "+"))
         {
-            node = newBinary(ND_ADD, Tok, node, mul(&Tok, Tok->next));
+            node = newAddBinary(ND_ADD, Tok, node, mul(&Tok, Tok->next));
         }
         else if (equal(Tok, "-"))
         {
-            node = newBinary(ND_SUB, Tok, node, mul(&Tok, Tok->next));
+            node = newSubBinary(ND_SUB, Tok, node, mul(&Tok, Tok->next));
         }
         else
         {
