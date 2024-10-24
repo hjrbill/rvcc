@@ -1,6 +1,11 @@
 #include "rvcc.h"
 
-static int Depth; // 栈深度
+// 栈深度
+static int Depth;
+// 用于存储函数参数的寄存器
+static char *ArgReg[] = {"a0", "a1", "a2", "a3", "a4", "a5"};
+// 当前的函数
+static Func *CurrentFn;
 
 static void genExpr(Node *Nd);
 
@@ -90,9 +95,25 @@ static void genExpr(Node *node)
         printf("  li a0, %d\n", node->Val);
         return;
     case ND_FUNCALL:
-        printf("\n  # 调用函数%s\n", node->FuncName);
-        printf("  call %s\n", node->FuncName);
+    {
+        int argsCnt = 0;
+        // 计算所有参数的值，正向压栈
+        for (Node *Arg = node->Args; Arg; Arg = Arg->next)
+        {
+            genExpr(Arg);
+            push();
+            argsCnt++;
+        }
+        // 反向弹栈，a0->参数 1，a1->参数 2……
+        for (int i = argsCnt - 1; i >= 0; i--)
+        {
+            pop(ArgReg[i]);
+        }
+
+        printf("  # 调用%s函数\n", node->FuncName);
+        printf("  call %s\n", node->FuncName); // 调用函数
         return;
+    }
     default:
         break;
     }
@@ -226,10 +247,10 @@ static void genStmt(Node *node)
     case ND_RETURN:
         printf("# 返回语句\n");
         genExpr(node->LHS);
-        printf("  # 跳转到.L.return 段\n");
+        printf("  # 跳转到.L.return.%s段\n", CurrentFn->name);
         // 无条件跳转语句，跳转到.L.return 段
         // j offset 是 jal x0, offset 的别名指令
-        printf("  j .L.return\n");
+        printf("  j .L.return.%s\n", CurrentFn->name);
         return;
     case ND_BLOCK:
         for (Node *n = node->Body; n; n = n->next)
@@ -250,69 +271,84 @@ static int alignTo(int N, int Align)
     return (N + Align - 1) / Align * Align;
 }
 
-static void assignLVarOffsets(Func *Prog)
-{
-    int offset = 0;
-    for (Obj *var = Prog->locals; var; var = var->next)
+static void assignLVarOffsets(Func *fn)
+{ // 为每个函数计算其变量所用的栈空间
+    for (Func *Fn = fn; Fn; Fn = Fn->next)
     {
-        offset += 8;
-        var->offset = -offset;
+        int offset = 0;
+        for (Obj *var = Fn->locals; var; var = var->next)
+        {
+            offset += 8;
+            var->offset = -offset;
+        }
+        Fn->stackSize = alignTo(offset, 16); // 将栈对齐到 16 字节（内存对齐），优化处理器访问
     }
-    Prog->stackSize = alignTo(offset, 16); // 将栈对齐到 16 字节（内存对齐），优化处理器访问
 }
 
 void codegen(Func *fn)
 {
     assignLVarOffsets(fn);
-    printf("  # 定义全局 main 段\n");
-    printf("  .globl main\n");
-    printf("\n# =====程序开始===============\n");
-    printf("# main 段标签，也是程序入口段\n");
-    printf("main:\n");
+    // 为每个函数单独生成代码
+    for (Func *Fn = fn; Fn; Fn = Fn->next)
+    {
+        printf("\n  # 定义全局%s段\n", Fn->name);
+        printf("  .globl %s\n", Fn->name);
+        printf("# =====%s段开始===============\n", Fn->name);
+        printf("# %s段标签\n", Fn->name);
+        printf("%s:\n", Fn->name);
+        CurrentFn = Fn;
 
-    // 栈布局
-    //-------------------------------// sp(原)
-    //              ra
-    //-------------------------------// ra = sp(原)-8
-    //              fp
-    //-------------------------------// fp = sp(原)-16
-    //             变量
-    //-------------------------------// sp = sp(原)-16-StackSize
-    //           表达式计算
-    //-------------------------------//
+        // 栈布局
+        //-------------------------------// sp(原)
+        //              ra
+        //-------------------------------// ra = sp(原)-8
+        //              fp
+        //-------------------------------// fp = sp(原)-16
+        //             变量
+        //-------------------------------// sp = sp(原)-16-StackSize
+        //           表达式计算
+        //-------------------------------//
 
-    // Prologue, 预处理
-    // 将 fp 压入栈中，保存 fp 的值
-    printf("  addi sp, sp, -16\n");
-    printf("  # 将 ra 寄存器压栈，保存 ra 的值\n");
-    printf("  sd ra, 8(sp)\n");
-    printf("  # 将 fp 压栈，fp 属于“被调用者保存”的寄存器，需要恢复原值\n");
-    printf("  sd fp, 0(sp)\n");
-    // mv a, b. 将寄存器 b 中的值存储到寄存器 a 中
-    printf("  # 将 sp 的值写入 fp\n");
-    printf("  mv fp, sp\n"); // 将 sp 写入 fp
-    // 26 个字母*8 字节=208 字节，栈腾出 208 字节的空间
-    printf("  # sp 腾出 StackSize 大小的栈空间\n");
-    printf("  addi sp, sp, -%d\n", fn->stackSize);
+        // Prologue, 预处理
+        // 将 fp 压入栈中，保存 fp 的值
+        printf("  addi sp, sp, -16\n");
+        printf("  # 将 ra 寄存器压栈，保存 ra 的值\n");
+        printf("  sd ra, 8(sp)\n");
+        printf("  # 将 fp 压栈，fp 属于“被调用者保存”的寄存器，需要恢复原值\n");
+        printf("  sd fp, 0(sp)\n");
+        // mv a, b. 将寄存器 b 中的值存储到寄存器 a 中
+        printf("  # 将 sp 的值写入 fp\n");
+        printf("  mv fp, sp\n"); // 将 sp 写入 fp
+        // 26 个字母*8 字节=208 字节，栈腾出 208 字节的空间
+        printf("  # sp 腾出 StackSize 大小的栈空间\n");
+        printf("  addi sp, sp, -%d\n", Fn->stackSize);
 
-    // 生成语句链表的代码
-    printf("\n# =====程序主体===============\n");
-    genStmt(fn->body);
-    assert(Depth == 0);
+        int cnt = 0;
+        for (Obj *Var = Fn->Params; Var; Var = Var->next)
+        {
+            printf("  # 将%s寄存器的值存入%s的栈地址\n", ArgReg[cnt], Var->name);
+            printf("  sd %s, %d(fp)\n", ArgReg[cnt++], Var->offset);
+        }
 
-    // Epilogue，后处理
-    printf("\n# =====程序结束===============\n");
-    printf("# return 段标签\n");
-    printf(".L.return:\n"); // 输出 return 段标签
+        // 生成语句链表的代码
+        printf("# =====%s段主体===============\n", Fn->name);
+        genStmt(Fn->body);
+        assert(Depth == 0);
 
-    printf("  # 将 fp 的值写回 sp\n");
-    printf("  mv sp, fp\n");
-    printf("  # 将最早 fp 保存的值弹栈，恢复 fp 和 sp\n");
-    printf("  ld fp, 0(sp)\n"); // 将栈顶元素（fp）弹出并存储到 fp
-    printf("  # 将 ra 寄存器弹栈，恢复 ra 的值\n");
-    printf("  ld ra, 8(sp)\n");    // 将 ra 寄存器弹栈，恢复 ra 的值
-    printf("  addi sp, sp, 16\n"); // 移动 sp 到初始态，消除 fp 的影响
+        // Epilogue，后处理
+        printf("# =====%s段结束===============\n", Fn->name);
+        printf("# return 段标签\n");
+        printf(".L.return.%s:\n", Fn->name); // 输出 return 段标签
 
-    printf("  # 返回 a0 值给系统调用\n");
-    printf("  ret\n");
+        printf("  # 将 fp 的值写回 sp\n");
+        printf("  mv sp, fp\n");
+        printf("  # 将最早 fp 保存的值弹栈，恢复 fp 和 sp\n");
+        printf("  ld fp, 0(sp)\n"); // 将栈顶元素（fp）弹出并存储到 fp
+        printf("  # 将 ra 寄存器弹栈，恢复 ra 的值\n");
+        printf("  ld ra, 8(sp)\n");    // 将 ra 寄存器弹栈，恢复 ra 的值
+        printf("  addi sp, sp, 16\n"); // 移动 sp 到初始态，消除 fp 的影响
+
+        printf("  # 返回 a0 值给系统调用\n");
+        printf("  ret\n");
+    }
 }
