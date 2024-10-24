@@ -107,6 +107,20 @@ static bool isIdentBody(char c)
     return isIdentHead(c) || ('0' <= c && c <= '9');
 }
 
+static bool isKeyword(Token *T)
+{
+    static char *keywordList[] = {"return", "if", "else", "for", "while"};
+
+    for (int i = 0; i < sizeof(keywordList) / sizeof(*keywordList); i++)
+    {
+        if (equal(T, keywordList[i]))
+        {
+            return true;
+        }
+    }
+    return false;
+}
+
 // 将为关键字的 TK_IDENT 节点转换为 TK_KEYWORD 节点
 static void convertKeywords(Token *Tok)
 {

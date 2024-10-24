@@ -8,6 +8,7 @@ project( rvcc C )
 add_executable( rvcc
   main.c
   tokenize.c
+  type.c
   parse.c
   codegen.c
 )

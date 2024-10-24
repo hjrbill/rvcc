@@ -54,17 +54,51 @@ Token *tokenize(char *Input);
 // 语法分析
 //
 
+typedef struct Node Node;
+typedef struct Type Type;
+
+// 语法分析 (类型系统)
+
+// 类型种类
+typedef enum
+{
+    TY_INT, // int 整型
+    TY_PTR, // 指针
+} TypeKind;
+
+struct Type
+{
+    TypeKind kind;
+    Type *base;
+};
+
+// 声明一个全局变量，定义在 type.c 中。
+extern Type *TyInt;
+// 判断是否是整形
+bool isInteger(Type *Ty);
+// 为所有节点赋予类型
+void addType(Node *node);
+
+// 语法分析 (抽象语法树构建)
+
 // AST 中二叉树节点种类
 typedef enum
 {
     ND_RETURN, // 返回
 
-    ND_BLOCK,     // { ... }，代码块
+    ND_BLOCK, // { ... }，代码块
+
+    ND_VAR, // 变量
+
+    ND_IF,        // if 语句
+    ND_FOR,       // for | while 语句 (while 是 for 的一种特殊情况)
     ND_EXPR_STMT, // 表达式语句
-    ND_VAR,       // 变量
 
     ND_ASSIGN, // 赋值
     ND_NEG,    // 负号
+
+    ND_ADDR,  // 取地址 &
+    ND_DEREF, // 解引用 *
 
     ND_EQ, // ==
     ND_NE, // !=
@@ -79,8 +113,6 @@ typedef enum
     ND_INT // 整形
 } NodeKind;
 
-typedef struct Node Node;
-
 typedef struct Obj Obj;
 struct Obj
 {
@@ -93,16 +125,25 @@ struct Obj
 struct Node
 {
     NodeKind kind;
+    Token *Tok;
 
     Node *next; // 指向下一语句
 
     Node *LHS;
     Node *RHS;
 
+    // if 语句或 for 语句
+    Node *Cond; // 条件语句
+    Node *Then; // true 走向的语句
+    Node *Else; // false 走向的语句
+    Node *Init; // 初始化语句
+    Node *Inc;  // 递增语句
+
     Node *Body; // 代码块
 
-    Obj *Var; // ND_VAR 类型的变量名
-    int Val;  // ND_INT 类型的值
+    Obj *Var;   // ND_VAR 类型的变量名
+    Type *type; // 节点中的数据的类型
+    int Val;    // ND_INT 类型的值
 };
 
 typedef struct Func Func;
