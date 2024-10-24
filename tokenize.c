@@ -53,7 +53,7 @@ bool equal(Token *T, char *ch)
     return memcmp(T->Loc, ch, T->Len) == 0 && ch[T->Len] == '\0';
 }
 
-// 跳过指定的字符
+// 跳过指定的字符，如果与指定的字符不同，则报错
 Token *skip(Token *T, char *ch)
 {
     if (!equal(T, ch))
@@ -61,6 +61,18 @@ Token *skip(Token *T, char *ch)
         errorTok(T, "expected: %s, got: %s", ch, T->Loc);
     }
     return T->next;
+}
+
+// 消耗掉指定字符的 Token，如果不匹配只会返回 false
+bool consume(Token **Rest, Token *Tok, char *str)
+{
+    if (equal(Tok, str))
+    {
+        *Rest = Tok->next;
+        return true;
+    }
+    *Rest = Tok;
+    return false;
 }
 
 static Token *newToken(TokenKind kind, char *start, char *end)
@@ -109,7 +121,7 @@ static bool isIdentBody(char c)
 
 static bool isKeyword(Token *T)
 {
-    static char *keywordList[] = {"return", "if", "else", "for", "while"};
+    static char *keywordList[] = {"return", "if", "else", "for", "while", "int"};
 
     for (int i = 0; i < sizeof(keywordList) / sizeof(*keywordList); i++)
     {

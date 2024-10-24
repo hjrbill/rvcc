@@ -14,10 +14,22 @@ static Obj *FindVarByName(Token *Tok)
     return NULL;
 }
 
-static Obj *newVar(char *name)
+// 获取变量名
+static char *getIdent(Token *Tok)
+{
+    if (Tok->kind != TK_IDENT)
+    {
+        errorTok(Tok, "expected an identifier");
+    }
+
+    return strndup(Tok->Loc, Tok->Len);
+}
+
+static Obj *newVar(char *name, Type *type)
 {
     Obj *var = calloc(1, sizeof(Obj));
     var->name = name;
+    var->type = type;
 
     // 将新变量插入到 Locals 的头部
     var->next = Locals;
@@ -26,8 +38,26 @@ static Obj *newVar(char *name)
     return var;
 }
 
-// program = "{" compoundStmt
-// compoundStmt = stmt* "}"
+static void createParamVars(Type *Param)
+{
+    if (Param)
+    {
+        // 先将最底部的加入 Locals 中，之后逐个加入到顶部，保持顺序不变
+        createParamVars(Param->next);
+        // 添加到 Locals 中
+        newVar(getIdent(Param->name), Param);
+    }
+}
+
+// program = functionDefinition*
+// functionDefinition = declspec declarator "{" compoundStmt*
+// declspec = "int"
+// declarator = "*"* ident typeSuffix
+// typeSuffix = ("(" funcParams? ")")?
+// funcParams = param ("," param)*
+// param = declspec declarator
+// compoundStmt = (declaration | stmt)* "}"
+// declaration = declspec (declarator ("=" expr)? ("," declarator ("=" expr)?)*)? ";"
 // stmt = "return" expr ";"
 //        | "if" "(" expr ")" stmt ("else" stmt)?
 //        | "for" "(" exprStmt expr? ";" expr? ")" stmt
@@ -42,8 +72,14 @@ static Obj *newVar(char *name)
 // add = mul ("+" mul | "-" mul)*
 // mul = unary ("*" unary | "/" unary)*
 // unary = ("+" | "-" | "*" | "&") unary | primary
-// primary = "(" expr ")" | ident | num
+// primary = "(" expr ")" | ident | Funcall | num
+// Funcall = ident "(" (assign ("," assign)*)? ")"
+static Func *function(Token **Rest, Token *Tok);
+static Type *declspec(Token **Rest, Token *Tok);
+static Type *declarator(Token **Rest, Token *Tok, Type *Ty);
+static Type *typeSuffix(Token **Rest, Token *Tok, Type *Ty);
 static Node *compoundStmt(Token **Rest, Token *Tok);
+static Node *declaration(Token **Rest, Token *Tok);
 static Node *stmt(Token **Rest, Token *Tok);
 static Node *exprStmt(Token **Rest, Token *Tok);
 static Node *expr(Token **Rest, Token *Tok);
@@ -54,6 +90,7 @@ static Node *add(Token **Rest, Token *Tok);
 static Node *mul(Token **Rest, Token *Tok);
 static Node *unary(Token **Rest, Token *Tok);
 static Node *primary(Token **Rest, Token *Tok);
+static Node *Funcall(Token **Rest, Token *Tok);
 
 static Node *newNode(NodeKind kind, Token *Tok)
 {
@@ -65,7 +102,7 @@ static Node *newNode(NodeKind kind, Token *Tok)
 // 创建数字（叶子）节点
 static Node *newNumNode(Token *Tok, int Val)
 {
-    Node *node = newNode(ND_INT, Tok);
+    Node *node = newNode(ND_NUM, Tok);
     node->Val = Val;
     return node;
 }
@@ -158,7 +195,98 @@ static Node *newVarNode(Token *Tok, Obj *var)
     return node;
 }
 
-// compoundStmt = stmt* "}"
+// functionDefinition = declspec declarator "{" compoundStmt*
+static Func *function(Token **Rest, Token *Tok)
+{
+    Type *Ty = declspec(&Tok, Tok);
+    Ty = declarator(&Tok, Tok, Ty);
+
+    // 清空上一个函数的 Locals
+    Locals = NULL;
+
+    Func *fn = calloc(1, sizeof(Func));
+    // 函数名
+    fn->name = getIdent(Ty->name);
+    // 函数参数
+    createParamVars(Ty->Params);
+    fn->Params = Locals;
+
+    Tok = skip(Tok, "{");
+    fn->body = compoundStmt(Rest, Tok);
+    fn->locals = Locals;
+
+    return fn;
+}
+
+// declspec = "int"
+static Type *declspec(Token **Rest, Token *Tok)
+{
+    if (equal(Tok, "int"))
+    {
+        *Rest = Tok->next;
+        return TyInt;
+    }
+    else
+    {
+        errorTok(Tok, "undefined type");
+    }
+}
+
+// declarator = "*"* ident typeSuffix
+static Type *declarator(Token **Rest, Token *Tok, Type *type)
+{
+    // "*"*
+    while (consume(&Tok, Tok, "*"))
+    {
+        type = pointerTo(type);
+    }
+
+    if (Tok->kind != TK_IDENT)
+    {
+        errorTok(Tok, "expected a variable name");
+    }
+
+    type = typeSuffix(Rest, Tok->next, type);
+    // ident
+    type->name = Tok; // 变量名或函数名
+    return type;
+}
+
+// typeSuffix = ("(" funcParams? ")")?
+// funcParams = param ("," param)*
+// param = declspec declarator
+static Type *typeSuffix(Token **Rest, Token *Tok, Type *Ty)
+{
+    // ("(" funcParams? ")")?
+    if (equal(Tok, "("))
+    {
+        Tok = Tok->next;
+
+        Type Head = {};
+        Type *Cur = &Head;
+
+        while (!equal(Tok, ")"))
+        {
+            // funcParams = param ("," param)*
+            // param = declspec declarator
+            if (Cur != &Head)
+                Tok = skip(Tok, ",");
+            Type *BaseTy = declspec(&Tok, Tok);
+            Type *DeclarTy = declarator(&Tok, Tok, BaseTy);
+            Cur->next = copyType(DeclarTy); // 将类型复制到形参链表一份
+            Cur = Cur->next;
+        }
+
+        Ty = funcType(Ty);
+        Ty->Params = Head.next; // 传递形参
+        *Rest = Tok->next;
+        return Ty;
+    }
+    *Rest = Tok;
+    return Ty;
+}
+
+// compoundStmt = (declaration | stmt)* "}"
 // 解析复合语句
 static Node *compoundStmt(Token **Rest, Token *T)
 {
@@ -167,7 +295,14 @@ static Node *compoundStmt(Token **Rest, Token *T)
 
     while (!equal(T, "}"))
     {
-        Cur->next = stmt(&T, T);
+        if (equal(T, "int")) // declaration
+        {
+            Cur->next = declaration(&T, T);
+        }
+        else // stmt
+        {
+            Cur->next = stmt(&T, T);
+        }
         Cur = Cur->next;
         addType(Cur); // 为节点添加类型信息
     }
@@ -176,6 +311,50 @@ static Node *compoundStmt(Token **Rest, Token *T)
     Node *node = newNode(ND_BLOCK, T);
     node->Body = Head.next; // 代码块节点的 body 存储了该代码块的语句
 
+    return node;
+}
+
+// declaration = declspec (declarator ("=" expr)? ("," declarator ("=" expr)?)*)? ";"
+static Node *declaration(Token **Rest, Token *Tok)
+{
+    // declspec
+    Type *baseType = declspec(&Tok, Tok); // 声明的 基础类型
+
+    Node head = {};
+    Node *Cur = &head;
+
+    int i = 0; // 处理连续变量申明
+
+    // (declarator ("=" expr)? ("," declarator ("=" expr)?)*)?
+    while (!equal(Tok, ";"))
+    {
+        // 第 1 个变量不必匹配 ","
+        if (i++ > 0)
+        {
+            Tok = skip(Tok, ",");
+        }
+
+        Type *Ty = declarator(&Tok, Tok, baseType);
+        Obj *Var = newVar(getIdent(Ty->name), Ty);
+
+        // 如果不存在"="则为变量声明，不需要生成节点，已经存储在 Locals 中了
+        if (!equal(Tok, "="))
+        {
+            continue;
+        }
+
+        Node *LHS = newVarNode(Ty->name, Var);
+        Node *RHS = assign(&Tok, Tok->next);
+        Node *node = newBinary(ND_ASSIGN, Tok, LHS, RHS);
+
+        Cur->next = newUnary(ND_EXPR_STMT, Tok, node);
+        Cur = Cur->next;
+    }
+
+    // 将所有表达式语句，存放在代码块中
+    Node *node = newNode(ND_BLOCK, Tok);
+    node->Body = head.next;
+    *Rest = Tok->next;
     return node;
 }
 
@@ -417,7 +596,8 @@ static Node *unary(Token **Rest, Token *T)
     return primary(Rest, T); // Tok 未进行运算，需要解析首部仍为 Rest
 }
 
-// primary = "(" expr ")" | num | ident
+// primary = "(" expr ")" | ident args? | num
+// args = "(" ")"
 // @param Rest 用于向上传递仍需要解析的 Token 的首部
 // @param Tok 当前正在解析的 Token
 static Node *primary(Token **Rest, Token *Tok)
@@ -430,10 +610,15 @@ static Node *primary(Token **Rest, Token *Tok)
     }
     else if (Tok->kind == TK_IDENT)
     {
+        if (equal(Tok->next, "("))
+        {
+            return Funcall(Rest, Tok);
+        }
+
         Obj *var = FindVarByName(Tok);
         if (var == NULL)
         {
-            var = newVar(strndup(Tok->Loc, Tok->Len)); // strndup() 复制字符串的指定长度
+            errorTok(Tok, "undefined variable");
         }
         Node *node = newVarNode(Tok, var);
         *Rest = Tok->next;
@@ -452,15 +637,47 @@ static Node *primary(Token **Rest, Token *Tok)
     }
 }
 
+// Funcall = ident "(" (assign ("," assign)*)? ")"
+static Node *Funcall(Token **Rest, Token *Tok)
+{
+    Node *node = newNode(ND_FUNCALL, Tok);
+    node->FuncName = strndup(Tok->Loc, Tok->Len);
+
+    Tok = Tok->next->next;
+
+    Node head = {};
+    Node *Cur = &head;
+    int i = 0;
+
+    while (!equal(Tok, ")"))
+    {
+        if (i++ > 0)
+        {
+            Tok = skip(Tok, ",");
+        }
+        if (i > 6)
+        {
+            errorTok(Tok, "funcation has too many arguments");
+        }
+        Cur->next = assign(&Tok, Tok);
+        Cur = Cur->next;
+    }
+    node->Args = head.next;
+
+    *Rest = Tok->next;
+    return node;
+}
+
 // 语法解析入口函数
-// program = "{" compoundStmt
+// program = functionDefinition*
 Func *parse(Token *Tok)
 {
-    Tok = skip(Tok, "{"); // 跳过 " { "
+    Func Head = {};
+    Func *Cur = &Head;
 
-    Func *fn = calloc(1, sizeof(Func));
-    fn->body = compoundStmt(&Tok, Tok);
-    fn->locals = Locals;
-
-    return fn;
+    while (Tok->kind != TK_EOF)
+    {
+        Cur = Cur->next = function(&Tok, Tok);
+    }
+    return Head.next;
 }
