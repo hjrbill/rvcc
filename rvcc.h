@@ -64,7 +64,7 @@ typedef enum
     ND_VAR, // 变量
 
     ND_IF,        // if 语句
-    ND_FOR,       // for 语句
+    ND_FOR,       // for | while 语句 (while 是 for 的一种特殊情况)
     ND_EXPR_STMT, // 表达式语句
 
     ND_ASSIGN, // 赋值

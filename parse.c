@@ -31,6 +31,7 @@ static Obj *newVar(char *name)
 // stmt = "return" expr ";"
 //        | "if" "(" expr ")" stmt ("else" stmt)?
 //        | "for" "(" exprStmt expr? ";" expr? ")" stmt
+//        | "while" "(" expr ")" stmt
 //        | "{" compoundStmt
 //        | exprStmt
 // exprStmt = expr ";"
@@ -117,6 +118,7 @@ static Node *compoundStmt(Token **Rest, Token *T)
 // stmt = "return" expr ";"
 //        | "if" "(" expr ")" stmt ("else" stmt)?
 //        | "for" "(" exprStmt expr? ";" expr? ")" stmt
+//        | "while" "(" expr ")" stmt
 //        | "{" compoundStmt
 //        | exprStmt
 static Node *stmt(Token **Rest, Token *T)
@@ -155,7 +157,19 @@ static Node *stmt(Token **Rest, Token *T)
             node->Inc = expr(&T, T);
         }
         T = skip(T, ")");
-        
+
+        node->Then = stmt(Rest, T);
+        return node;
+    }
+    else if (equal(T, "while")) // 处理 while 语句，不与 for 共用是为了处理两种语法不同的报错情况
+    {
+        T = T->next;
+        Node *node = newNode(ND_FOR);
+
+        T = skip(T, "(");
+        node->Cond = expr(&T, T);
+        T = skip(T, ")");
+
         node->Then = stmt(Rest, T);
         return node;
     }

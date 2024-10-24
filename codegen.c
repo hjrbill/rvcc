@@ -143,7 +143,10 @@ static void genStmt(Node *node)
     case ND_FOR:
     {
         int cnt = Count();
-        genStmt(node->Init); // 初始化语句
+        if (node->Init)
+        {
+            genStmt(node->Init); // 初始化语句
+        }
         printf(".L.begin.%d:\n", cnt);
         if (node->Cond) // 存在条件语句
         {
