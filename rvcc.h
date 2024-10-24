@@ -97,6 +97,7 @@ struct Obj
 struct Node
 {
     NodeKind kind;
+    Token *Tok;
 
     Node *next; // 指向下一语句
 

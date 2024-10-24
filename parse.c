@@ -55,7 +55,7 @@ static Node *mul(Token **Rest, Token *Tok);
 static Node *unary(Token **Rest, Token *Tok);
 static Node *primary(Token **Rest, Token *Tok);
 
-static Node *newNode(NodeKind kind)
+static Node *newNode(NodeKind kind, Token *Tok)
 {
     Node *node = calloc(1, sizeof(Node));
     node->kind = kind;
@@ -63,34 +63,34 @@ static Node *newNode(NodeKind kind)
 }
 
 // 创建二元运算节点
-static Node *newBinary(NodeKind kind, Node *lhs, Node *rhs)
+static Node *newBinary(NodeKind kind, Token *Tok, Node *lhs, Node *rhs)
 {
-    Node *node = newNode(kind);
+    Node *node = newNode(kind, Tok);
     node->LHS = lhs;
     node->RHS = rhs;
     return node;
 }
 
 // 创建一元运算节点
-static Node *newUnary(NodeKind kind, Node *lhs)
+static Node *newUnary(NodeKind kind, Token *Tok, Node *lhs)
 {
-    Node *node = newNode(kind);
+    Node *node = newNode(kind, Tok);
     node->LHS = lhs;
     return node;
 }
 
 // 创建变量节点
-static Node *newVarNode(Obj *var)
+static Node *newVarNode(Token *Tok, Obj *var)
 {
-    Node *node = newNode(ND_VAR);
+    Node *node = newNode(ND_VAR, Tok);
     node->Var = var;
     return node;
 }
 
 // 创建数字（叶子）节点
-static Node *newNumNode(int Val)
+static Node *newNumNode(Token *Tok, int Val)
 {
-    Node *node = newNode(ND_INT);
+    Node *node = newNode(ND_INT, Tok);
     node->Val = Val;
     return node;
 }
@@ -109,7 +109,7 @@ static Node *compoundStmt(Token **Rest, Token *T)
     }
     *Rest = skip(T, "}");
 
-    Node *node = newNode(ND_BLOCK);
+    Node *node = newNode(ND_BLOCK,T);
     node->Body = Head.next; // 代码块节点的 body 存储了该代码块的语句
 
     return node;
@@ -125,7 +125,7 @@ static Node *stmt(Token **Rest, Token *T)
 {
     if (equal(T, "if"))
     {
-        Node *node = newNode(ND_IF);
+        Node *node = newNode(ND_IF,T);
 
         T = skip(T->next, "(");
         node->Cond = expr(&T, T);
@@ -143,7 +143,7 @@ static Node *stmt(Token **Rest, Token *T)
     else if (equal(T, "for"))
     {
         T = T->next;
-        Node *node = newNode(ND_FOR);
+        Node *node = newNode(ND_FOR, T);
 
         T = skip(T, "(");
         node->Init = exprStmt(&T, T);
@@ -164,7 +164,7 @@ static Node *stmt(Token **Rest, Token *T)
     else if (equal(T, "while")) // 处理 while 语句，不与 for 共用是为了处理两种语法不同的报错情况
     {
         T = T->next;
-        Node *node = newNode(ND_FOR);
+        Node *node = newNode(ND_FOR, T);
 
         T = skip(T, "(");
         node->Cond = expr(&T, T);
@@ -176,7 +176,7 @@ static Node *stmt(Token **Rest, Token *T)
     else if (equal(T, "return")) // return expr;
     {
         T = T->next;
-        Node *node = newUnary(ND_RETURN, expr(&T, T));
+        Node *node = newUnary(ND_RETURN, T, expr(&T, T));
         *Rest = skip(T, ";");
         return node;
     }
@@ -195,10 +195,10 @@ static Node *exprStmt(Token **Rest, Token *Tok)
     if (equal(Tok, ";")) // 处理空语句
     {
         *Rest = skip(Tok, ";");
-        return newNode(ND_BLOCK);
+        return newNode(ND_BLOCK, Tok);
     }
 
-    Node *node = newUnary(ND_EXPR_STMT, expr(&Tok, Tok));
+    Node *node = newUnary(ND_EXPR_STMT, Tok, expr(&Tok, Tok));
     *Rest = skip(Tok, ";");
     return node;
 }
@@ -219,7 +219,7 @@ static Node *assign(Token **Rest, Token *Tok)
     Node *node = equality(&Tok, Tok);
     if (equal(Tok, "=")) // 处理递归赋值，如："a=b=1;"
     {
-        node = newBinary(ND_ASSIGN, node, assign(&Tok, Tok->next));
+        node = newBinary(ND_ASSIGN, Tok, node, assign(&Tok, Tok->next));
     }
     *Rest = Tok;
     return node;
@@ -235,11 +235,11 @@ static Node *equality(Token **Rest, Token *Tok)
     {
         if (equal(Tok, "=="))
         {
-            node = newBinary(ND_EQ, node, relational(&Tok, Tok->next));
+            node = newBinary(ND_EQ, Tok, node, relational(&Tok, Tok->next));
         }
         else if (equal(Tok, "!="))
         {
-            node = newBinary(ND_NE, node, relational(&Tok, Tok->next));
+            node = newBinary(ND_NE, Tok, node, relational(&Tok, Tok->next));
         }
         else
         {
@@ -259,19 +259,19 @@ static Node *relational(Token **Rest, Token *Tok)
     {
         if (equal(Tok, "<"))
         {
-            node = newBinary(ND_LT, node, add(&Tok, Tok->next));
+            node = newBinary(ND_LT, Tok, node, add(&Tok, Tok->next));
         }
         else if (equal(Tok, ">"))
         {
-            node = newBinary(ND_LT, add(&Tok, Tok->next), node); // a > b 等价于 b < a
+            node = newBinary(ND_LT, Tok, add(&Tok, Tok->next), node); // a > b 等价于 b < a
         }
         else if (equal(Tok, "<="))
         {
-            node = newBinary(ND_LE, node, add(&Tok, Tok->next));
+            node = newBinary(ND_LE, Tok, node, add(&Tok, Tok->next));
         }
         else if (equal(Tok, ">="))
         {
-            node = newBinary(ND_LE, add(&Tok, Tok->next), node); // a >= b 等价于 b <= a
+            node = newBinary(ND_LE, Tok, add(&Tok, Tok->next), node); // a >= b 等价于 b <= a
         }
         else
         {
@@ -291,11 +291,11 @@ static Node *add(Token **Rest, Token *Tok)
     {
         if (equal(Tok, "+"))
         {
-            node = newBinary(ND_ADD, node, mul(&Tok, Tok->next));
+            node = newBinary(ND_ADD, Tok, node, mul(&Tok, Tok->next));
         }
         else if (equal(Tok, "-"))
         {
-            node = newBinary(ND_SUB, node, mul(&Tok, Tok->next));
+            node = newBinary(ND_SUB, Tok, node, mul(&Tok, Tok->next));
         }
         else
         {
@@ -315,11 +315,11 @@ static Node *mul(Token **Rest, Token *Tok)
     {
         if (equal(Tok, "*"))
         {
-            node = newBinary(ND_MUL, node, unary(&Tok, Tok->next));
+            node = newBinary(ND_MUL,Tok, node, unary(&Tok, Tok->next));
         }
         else if (equal(Tok, "/"))
         {
-            node = newBinary(ND_DIV, node, unary(&Tok, Tok->next));
+            node = newBinary(ND_DIV,Tok, node, unary(&Tok, Tok->next));
         }
         else
         {
@@ -340,7 +340,7 @@ static Node *unary(Token **Rest, Token *Tok)
     }
     else if (equal(Tok, "-"))
     {
-        return newUnary(ND_NEG, unary(Rest, Tok->next));
+        return newUnary(ND_NEG, Tok, unary(Rest, Tok->next));
     }
     return primary(Rest, Tok); // Tok 未进行运算，需要解析首部仍为 Rest
 }
@@ -363,13 +363,13 @@ static Node *primary(Token **Rest, Token *Tok)
         {
             var = newVar(strndup(Tok->Loc, Tok->Len)); // strndup() 复制字符串的指定长度
         }
-        Node *node = newVarNode(var);
+        Node *node = newVarNode(Tok, var);
         *Rest = Tok->next;
         return node;
     }
     else if (Tok->kind == TK_NUM)
     {
-        Node *node = newNumNode(Tok->Val);
+        Node *node = newNumNode(Tok, Tok->Val);
         *Rest = Tok->next;
         return node;
     }
