@@ -89,6 +89,10 @@ static void genExpr(Node *node)
         // li 为 addi 别名指令，加载一个立即数到寄存器中
         printf("  li a0, %d\n", node->Val);
         return;
+    case ND_FUNCALL:
+        printf("\n  # 调用函数%s\n", node->FuncName);
+        printf("  call %s\n", node->FuncName);
+        return;
     default:
         break;
     }
@@ -266,17 +270,30 @@ void codegen(Func *fn)
     printf("# main 段标签，也是程序入口段\n");
     printf("main:\n");
 
+    // 栈布局
+    //-------------------------------// sp(原)
+    //              ra
+    //-------------------------------// ra = sp(原)-8
+    //              fp
+    //-------------------------------// fp = sp(原)-16
+    //             变量
+    //-------------------------------// sp = sp(原)-16-StackSize
+    //           表达式计算
+    //-------------------------------//
+
     // Prologue, 预处理
     // 将 fp 压入栈中，保存 fp 的值
+    printf("  addi sp, sp, -16\n");
+    printf("  # 将 ra 寄存器压栈，保存 ra 的值\n");
+    printf("  sd ra, 8(sp)\n");
     printf("  # 将 fp 压栈，fp 属于“被调用者保存”的寄存器，需要恢复原值\n");
-    printf("  addi sp, sp, -8\n");
     printf("  sd fp, 0(sp)\n");
     // mv a, b. 将寄存器 b 中的值存储到寄存器 a 中
     printf("  # 将 sp 的值写入 fp\n");
     printf("  mv fp, sp\n"); // 将 sp 写入 fp
     // 26 个字母*8 字节=208 字节，栈腾出 208 字节的空间
     printf("  # sp 腾出 StackSize 大小的栈空间\n");
-    printf("  addi sp, sp, %d\n", fn->stackSize);
+    printf("  addi sp, sp, -%d\n", fn->stackSize);
 
     // 生成语句链表的代码
     printf("\n# =====程序主体===============\n");
@@ -291,8 +308,10 @@ void codegen(Func *fn)
     printf("  # 将 fp 的值写回 sp\n");
     printf("  mv sp, fp\n");
     printf("  # 将最早 fp 保存的值弹栈，恢复 fp 和 sp\n");
-    printf("  ld fp, 0(sp)\n");   // 将栈顶元素（fp）弹出并存储到 fp
-    printf("  addi sp, sp, 8\n"); // 移动 sp 到初始态，消除 fp 的影响
+    printf("  ld fp, 0(sp)\n"); // 将栈顶元素（fp）弹出并存储到 fp
+    printf("  # 将 ra 寄存器弹栈，恢复 ra 的值\n");
+    printf("  ld ra, 8(sp)\n");    // 将 ra 寄存器弹栈，恢复 ra 的值
+    printf("  addi sp, sp, 16\n"); // 移动 sp 到初始态，消除 fp 的影响
 
     printf("  # 返回 a0 值给系统调用\n");
     printf("  ret\n");

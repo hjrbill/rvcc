@@ -46,7 +46,8 @@ static Obj *newVar(char *name, Type *type)
 // add = mul ("+" mul | "-" mul)*
 // mul = unary ("*" unary | "/" unary)*
 // unary = ("+" | "-" | "*" | "&") unary | primary
-// primary = "(" expr ")" | ident | num
+// primary = "(" expr ")" | ident args? | num
+// args = "(" ")"
 static Node *compoundStmt(Token **Rest, Token *Tok);
 static Node *declaration(Token **Rest, Token *Tok);
 static Type *declspec(Token **Rest, Token *Tok);
@@ -518,7 +519,8 @@ static Node *unary(Token **Rest, Token *T)
     return primary(Rest, T); // Tok 未进行运算，需要解析首部仍为 Rest
 }
 
-// primary = "(" expr ")" | num | ident
+// primary = "(" expr ")" | ident args? | num
+// args = "(" ")"
 // @param Rest 用于向上传递仍需要解析的 Token 的首部
 // @param Tok 当前正在解析的 Token
 static Node *primary(Token **Rest, Token *Tok)
@@ -531,6 +533,14 @@ static Node *primary(Token **Rest, Token *Tok)
     }
     else if (Tok->kind == TK_IDENT)
     {
+        if (equal(Tok->next, "("))
+        {
+            Node *node = newNode(ND_FUNCALL, Tok);
+            node->FuncName = strndup(Tok->Loc, Tok->Len);
+            *Rest = skip(Tok->next->next, ")");
+            return node;
+        }
+
         Obj *var = FindVarByName(Tok);
         if (var == NULL)
         {

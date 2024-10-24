@@ -53,7 +53,7 @@ void addType(Node *node)
     case ND_NE:
     case ND_LT:
     case ND_LE:
-
+    case ND_FUNCALL:
     case ND_NUM:
         node->type = TyInt;
         return;

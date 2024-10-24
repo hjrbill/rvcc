@@ -90,7 +90,8 @@ typedef enum
 {
     ND_RETURN, // 返回
 
-    ND_BLOCK, // { ... }，代码块
+    ND_BLOCK,   // { ... }，代码块
+    ND_FUNCALL, // 函数调用
 
     ND_VAR, // 变量
 
@@ -144,7 +145,8 @@ struct Node
     Node *Init; // 初始化语句
     Node *Inc;  // 递增语句
 
-    Node *Body; // 代码块
+    Node *Body;     // 代码块
+    char *FuncName; // 函数名
 
     Obj *Var;   // ND_VAR 类型的变量名
     Type *type; // 节点中的数据的类型
