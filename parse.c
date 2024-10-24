@@ -28,7 +28,10 @@ static Obj *newVar(char *name)
 
 // program = "{" compoundStmt
 // compoundStmt = stmt* "}"
-// stmt = "return" expr ";" | "{" compoundStmt | exprStmt
+// stmt = "return" expr ";"
+//        | "if" "(" expr ")" stmt ("else" stmt)?
+//        | "{" compoundStmt
+//        | exprStmt
 // exprStmt = expr ";"
 // expr = assign
 // assign = equality ("=" assign)?
@@ -110,9 +113,29 @@ static Node *compoundStmt(Token **Rest, Token *T)
     return node;
 }
 
-// stmt = "return" expr ";" | "{" compoundStmt | exprStmt
+// stmt = "return" expr ";"
+//        | "if" "(" expr ")" stmt ("else" stmt)?
+//        | "{" compoundStmt
+//        | exprStmt
 static Node *stmt(Token **Rest, Token *T)
 {
+    if (equal(T, "if"))
+    {
+        Node *node = newNode(ND_IF);
+        T = skip(T->next, "(");
+        node->Cond = expr(&T, T);
+        T = skip(T, ")");
+        node->Then = stmt(&T, T);
+
+        if (equal(T, "else"))
+        {
+            node->Else = stmt(&T, T->next);
+        }
+
+        *Rest = T;
+        return node;
+    }
+
     // return expr;
     if (equal(T, "return"))
     {
@@ -330,6 +353,6 @@ Func *parse(Token *Tok)
     Func *fn = calloc(1, sizeof(Func));
     fn->body = compoundStmt(&Tok, Tok);
     fn->locals = Locals;
-    
+
     return fn;
 }

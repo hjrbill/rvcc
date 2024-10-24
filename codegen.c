@@ -2,6 +2,12 @@
 
 static int Depth; // 栈深度
 
+static int Count(void)
+{
+    static int cnt = 0;
+    return cnt++;
+}
+
 // 将 a0 压入栈
 static void push(void)
 {
@@ -116,11 +122,21 @@ static void genStmt(Node *node)
 {
     switch (node->kind)
     {
-    case ND_BLOCK:
-        for (Node *n = node->Body; n; n = n->next)
+    case ND_EXPR_STMT:
+        genExpr(node->LHS);
+        return;
+    case ND_IF:
+        int cnt = Count(); // 为每个 if 生成其编号，以处理 else 的跳转标记
+        genExpr(node->Cond);
+        printf("  beqz a0, .L.else.%d\n", cnt); // 判断条件是否不成立（a0=0），条件不成立跳转到 .L.else. 标签
+        genStmt(node->Then);                    // 条件成立，执行 then 语句
+        printf("j .L.end.%d\n", cnt);          // 执行完 then 语句后跳转到 .L.end. 标签
+        printf(".L.else.%d:\n", cnt);           // else 标记
+        if (node->Else)                         // 存在 else 语句
         {
-            genStmt(n);
+            genStmt(node->Else);
         }
+        printf(".L.end.%d:\n", cnt); // if 语句结束
         return;
     case ND_RETURN:
         genExpr(node->LHS);
@@ -128,8 +144,11 @@ static void genStmt(Node *node)
         // j offset 是 jal x0, offset 的别名指令
         printf("  j .L.return\n");
         return;
-    case ND_EXPR_STMT:
-        genExpr(node->LHS);
+    case ND_BLOCK:
+        for (Node *n = node->Body; n; n = n->next)
+        {
+            genStmt(n);
+        }
         return;
     default:
         break;
