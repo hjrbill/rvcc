@@ -54,9 +54,12 @@ void addType(Node *node)
     case ND_LT:
     case ND_LE:
 
-    case ND_VAR:
-    case ND_INT:
+    case ND_NUM:
         node->type = TyInt;
+        return;
+
+    case ND_VAR:
+        node->type = node->Var->type;
         return;
 
     // 将取址节点的类型设为 指针，其基类为其左部的类型
@@ -64,12 +67,13 @@ void addType(Node *node)
         node->type = pointerTo(node->LHS->type);
         return;
 
-    // 如果解引用指向的是指针，则为指针指向的类型；否则为 int
+    // 如果解引用指向的是指针，则为指针指向的类型；否则报错
     case ND_DEREF:
-        if (node->LHS->type->kind == TY_PTR)
-            node->type = node->LHS->type->base;
-        else
-            node->type = TyInt;
+        if (node->LHS->type->kind != TY_PTR)
+        {
+            errorTok(node->Tok, "invalid pointer dereference");
+        }
+        node->type = node->LHS->type->base;
         return;
     default:
         break;

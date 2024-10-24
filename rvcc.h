@@ -46,6 +46,7 @@ void errorTok(Token *Tok, char *Fmt, ...);
 // 判断 Token 与 Str 的关系
 bool equal(Token *Tok, char *Str);
 Token *skip(Token *Tok, char *Str);
+bool consume(Token **Rest, Token *Tok, char *Str);
 
 // 词法分析入口函数
 Token *tokenize(char *Input);
@@ -70,12 +71,15 @@ struct Type
 {
     TypeKind kind;
     Type *base;
+    Token *name;
 };
 
 // 声明一个全局变量，定义在 type.c 中。
 extern Type *TyInt;
 // 判断是否是整形
 bool isInteger(Type *Ty);
+// 构建一个指针类型，并指向基类
+Type *pointerTo(Type *Base);
 // 为所有节点赋予类型
 void addType(Node *node);
 
@@ -110,7 +114,7 @@ typedef enum
     ND_MUL, // *
     ND_DIV, // /
 
-    ND_INT // 整形
+    ND_NUM // 整形
 } NodeKind;
 
 typedef struct Obj Obj;
@@ -118,6 +122,7 @@ struct Obj
 {
     Obj *next; // 下一个对象
 
+    Type *type; // 变量类型
     char *name; // 对象名
     int offset; // 相对于 fp 的偏移量
 };
@@ -143,7 +148,7 @@ struct Node
 
     Obj *Var;   // ND_VAR 类型的变量名
     Type *type; // 节点中的数据的类型
-    int Val;    // ND_INT 类型的值
+    int Val;    // ND_NUM 类型的值
 };
 
 typedef struct Func Func;

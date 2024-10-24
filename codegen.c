@@ -84,7 +84,7 @@ static void genExpr(Node *node)
         printf("  # 将 a0 的值，写入到 a1 中存放的地址\n");
         printf("  sd a0, 0(a1)\n");
         return;
-    case ND_INT: // 是整型
+    case ND_NUM: // 是整型
         printf("  # 将%d加载到 a0 中\n", node->Val);
         // li 为 addi 别名指令，加载一个立即数到寄存器中
         printf("  li a0, %d\n", node->Val);
