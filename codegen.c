@@ -126,11 +126,12 @@ static void genStmt(Node *node)
         genExpr(node->LHS);
         return;
     case ND_IF:
-        int cnt = Count(); // 为每个 if 生成其编号，以处理 else 的跳转标记
+    {
+        int cnt = Count(); // 为每个 段语句（如：if,for）生成其编号，以处理 else 的跳转标记
         genExpr(node->Cond);
         printf("  beqz a0, .L.else.%d\n", cnt); // 判断条件是否不成立（a0=0），条件不成立跳转到 .L.else. 标签
         genStmt(node->Then);                    // 条件成立，执行 then 语句
-        printf("j .L.end.%d\n", cnt);          // 执行完 then 语句后跳转到 .L.end. 标签
+        printf("j .L.end.%d\n", cnt);           // 执行完 then 语句后跳转到 .L.end. 标签
         printf(".L.else.%d:\n", cnt);           // else 标记
         if (node->Else)                         // 存在 else 语句
         {
@@ -138,6 +139,26 @@ static void genStmt(Node *node)
         }
         printf(".L.end.%d:\n", cnt); // if 语句结束
         return;
+    }
+    case ND_FOR:
+    {
+        int cnt = Count();
+        genStmt(node->Init); // 初始化语句
+        printf(".L.begin.%d:\n", cnt);
+        if (node->Cond) // 存在条件语句
+        {
+            genExpr(node->Cond);
+            printf(" beqz a0, .L.end.%d\n", cnt);
+        }
+        genStmt(node->Then); // 执行循环体
+        if (node->Inc)       // 存在递增语句
+        {
+            genExpr(node->Inc);
+        }
+        printf("  j .L.begin.%d\n", cnt);
+        printf(".L.end.%d:\n", cnt);
+        return;
+    }
     case ND_RETURN:
         genExpr(node->LHS);
         // 无条件跳转语句，跳转到.L.return 段

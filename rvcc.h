@@ -64,6 +64,7 @@ typedef enum
     ND_VAR, // 变量
 
     ND_IF,        // if 语句
+    ND_FOR,       // for 语句
     ND_EXPR_STMT, // 表达式语句
 
     ND_ASSIGN, // 赋值
@@ -102,10 +103,12 @@ struct Node
     Node *LHS;
     Node *RHS;
 
-    // if 语句
+    // if 语句或 for 语句
     Node *Cond; // 条件语句
     Node *Then; // true 走向的语句
     Node *Else; // false 走向的语句
+    Node *Init; // 初始化语句
+    Node *Inc;  // 递增语句
 
     Node *Body; // 代码块
 

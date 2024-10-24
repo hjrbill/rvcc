@@ -30,6 +30,7 @@ static Obj *newVar(char *name)
 // compoundStmt = stmt* "}"
 // stmt = "return" expr ";"
 //        | "if" "(" expr ")" stmt ("else" stmt)?
+//        | "for" "(" exprStmt expr? ";" expr? ")" stmt
 //        | "{" compoundStmt
 //        | exprStmt
 // exprStmt = expr ";"
@@ -115,6 +116,7 @@ static Node *compoundStmt(Token **Rest, Token *T)
 
 // stmt = "return" expr ";"
 //        | "if" "(" expr ")" stmt ("else" stmt)?
+//        | "for" "(" exprStmt expr? ";" expr? ")" stmt
 //        | "{" compoundStmt
 //        | exprStmt
 static Node *stmt(Token **Rest, Token *T)
@@ -122,6 +124,7 @@ static Node *stmt(Token **Rest, Token *T)
     if (equal(T, "if"))
     {
         Node *node = newNode(ND_IF);
+
         T = skip(T->next, "(");
         node->Cond = expr(&T, T);
         T = skip(T, ")");
@@ -135,16 +138,35 @@ static Node *stmt(Token **Rest, Token *T)
         *Rest = T;
         return node;
     }
-
-    // return expr;
-    if (equal(T, "return"))
+    else if (equal(T, "for"))
     {
-        Node *node = newUnary(ND_RETURN, expr(&T, T->next));
+        T = T->next;
+        Node *node = newNode(ND_FOR);
+
+        T = skip(T, "(");
+        node->Init = exprStmt(&T, T);
+        if (!equal(T, ";"))
+        {
+            node->Cond = expr(&T, T);
+        }
+        T = skip(T, ";");
+        if (!equal(T, ")"))
+        {
+            node->Inc = expr(&T, T);
+        }
+        T = skip(T, ")");
+        
+        node->Then = stmt(Rest, T);
+        return node;
+    }
+    else if (equal(T, "return")) // return expr;
+    {
+        T = T->next;
+        Node *node = newUnary(ND_RETURN, expr(&T, T));
         *Rest = skip(T, ";");
         return node;
     }
-
-    if (equal(T, "{"))
+    else if (equal(T, "{"))
     {
         return compoundStmt(Rest, T->next);
     }
