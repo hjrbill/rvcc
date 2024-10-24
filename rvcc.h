@@ -69,6 +69,9 @@ typedef enum
 
     ND_ASSIGN, // 赋值
     ND_NEG,    // 负号
+    
+    ND_ADDR,   // 取地址 &
+    ND_DEREF,  // 解引用 *
 
     ND_EQ, // ==
     ND_NE, // !=

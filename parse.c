@@ -41,7 +41,7 @@ static Obj *newVar(char *name)
 // relational = add ("<" add | "<=" add | ">" add | ">=" add)*
 // add = mul ("+" mul | "-" mul)*
 // mul = unary ("*" unary | "/" unary)*
-// unary = ("+" | "-" ) unary | primary
+// unary = ("+" | "-" | "*" | "&") unary | primary
 // primary = "(" expr ")" | ident | num
 static Node *compoundStmt(Token **Rest, Token *Tok);
 static Node *stmt(Token **Rest, Token *Tok);
@@ -109,7 +109,7 @@ static Node *compoundStmt(Token **Rest, Token *T)
     }
     *Rest = skip(T, "}");
 
-    Node *node = newNode(ND_BLOCK,T);
+    Node *node = newNode(ND_BLOCK, T);
     node->Body = Head.next; // 代码块节点的 body 存储了该代码块的语句
 
     return node;
@@ -125,7 +125,7 @@ static Node *stmt(Token **Rest, Token *T)
 {
     if (equal(T, "if"))
     {
-        Node *node = newNode(ND_IF,T);
+        Node *node = newNode(ND_IF, T);
 
         T = skip(T->next, "(");
         node->Cond = expr(&T, T);
@@ -315,11 +315,11 @@ static Node *mul(Token **Rest, Token *Tok)
     {
         if (equal(Tok, "*"))
         {
-            node = newBinary(ND_MUL,Tok, node, unary(&Tok, Tok->next));
+            node = newBinary(ND_MUL, Tok, node, unary(&Tok, Tok->next));
         }
         else if (equal(Tok, "/"))
         {
-            node = newBinary(ND_DIV,Tok, node, unary(&Tok, Tok->next));
+            node = newBinary(ND_DIV, Tok, node, unary(&Tok, Tok->next));
         }
         else
         {
@@ -329,20 +329,28 @@ static Node *mul(Token **Rest, Token *Tok)
     }
 }
 
-// unary = ("+" | "-" ) unary | primary
+// unary = ("+" | "-" | "*" | "&") unary | primary
 // @param Rest 用于向上传递仍需要解析的 Token 的首部
 // @param Tok 当前正在解析的 Token
-static Node *unary(Token **Rest, Token *Tok)
+static Node *unary(Token **Rest, Token *T)
 {
-    if (equal(Tok, "+"))
+    if (equal(T, "+"))
     {
-        return unary(Rest, Tok->next);
+        return unary(Rest, T->next);
     }
-    else if (equal(Tok, "-"))
+    else if (equal(T, "-"))
     {
-        return newUnary(ND_NEG, Tok, unary(Rest, Tok->next));
+        return newUnary(ND_NEG, T, unary(Rest, T->next));
     }
-    return primary(Rest, Tok); // Tok 未进行运算，需要解析首部仍为 Rest
+    else if (equal(T, "*"))
+    {
+        return newUnary(ND_DEREF, T, unary(Rest, T->next));
+    }
+    else if (equal(T, "&"))
+    {
+        return newUnary(ND_ADDR, T, unary(Rest, T->next));
+    }
+    return primary(Rest, T); // Tok 未进行运算，需要解析首部仍为 Rest
 }
 
 // primary = "(" expr ")" | num | ident

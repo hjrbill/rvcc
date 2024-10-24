@@ -2,6 +2,8 @@
 
 static int Depth; // 栈深度
 
+static void genExpr(Node *Nd);
+
 static int Count(void)
 {
     static int cnt = 0;
@@ -32,38 +34,47 @@ static void pop(char *Reg)
 // 计算给定节点的绝对地址，如果报错，说明节点不在内存中
 static void getAddr(Node *node)
 {
-    if (node->kind == ND_VAR)
+    switch (node->kind)
     {
+    case ND_VAR:
         printf("  # 获取变量%s，栈内地址为%d(fp)\n", node->Var->name,
                node->Var->offset);
         // 取出变量相对于 fp 的偏移量
         printf("  addi a0, fp, %d\n", node->Var->offset);
         return;
+    case ND_DEREF:
+        genExpr(node->LHS);
+        return;
+    default:
+        errorTok(node->Tok, "not an lvalue");
+        return;
     }
-    errorTok(node->Tok, "not an lvalue");
 }
 
 static void genExpr(Node *node)
 {
     switch (node->kind)
     {
-    case ND_INT: // 是整型
-        printf("  # 将%d加载到 a0 中\n", node->Val);
-        // li 为 addi 别名指令，加载一个立即数到寄存器中
-        printf("  li a0, %d\n", node->Val);
-        return;
-    case ND_NEG: // 是取反
-        genExpr(node->LHS);
-        printf("  # 对 a0 值进行取反\n");
-        // neg a0, a0 是 sub a0, x0, a0 的别名，即 a0=0-a0
-        printf("  neg a0, a0\n");
-        return;
     case ND_VAR: // 是变量
         // 计算出变量的地址，然后存入 a0
         getAddr(node);
         // 访问 a0 地址中存储的数据，存入到 a0 当中
         printf("  # 读取 a0 中存放的地址，得到的值存入 a0\n");
         printf("  ld a0, 0(a0)\n");
+        return;
+    case ND_DEREF:
+        genExpr(node->LHS);
+        printf("  # 读取 a0 中存放的地址，得到的值存入 a0\n");
+        printf("  ld a0, 0(a0)\n");
+        return;
+    case ND_ADDR:
+        getAddr(node->LHS);
+        return;
+    case ND_NEG: // 是取反
+        genExpr(node->LHS);
+        printf("  # 对 a0 值进行取反\n");
+        // neg a0, a0 是 sub a0, x0, a0 的别名，即 a0=0-a0
+        printf("  neg a0, a0\n");
         return;
     case ND_ASSIGN:         // 是赋值
         getAddr(node->LHS); // 左边为被赋值的地址
@@ -72,6 +83,11 @@ static void genExpr(Node *node)
         pop("a1");
         printf("  # 将 a0 的值，写入到 a1 中存放的地址\n");
         printf("  sd a0, 0(a1)\n");
+        return;
+    case ND_INT: // 是整型
+        printf("  # 将%d加载到 a0 中\n", node->Val);
+        // li 为 addi 别名指令，加载一个立即数到寄存器中
+        printf("  li a0, %d\n", node->Val);
         return;
     default:
         break;
