@@ -241,13 +241,21 @@ assert 5 'int main() { return ret5(); }'
 assert 8 'int main() { return ret3()+ret5(); }'
 
 # [20] 支持最多6个参数的函数调用
-echo 支持最多6个参数的函数调用
+echo "支持最多6个参数的函数调用"
 
 assert 8 'int main() { return add(3, 5); }'
 assert 2 'int main() { return sub(5, 3); }'
 assert 21 'int main() { return add6(1,2,3,4,5,6); }'
 assert 66 'int main() { return add6(1,2,add6(3,4,5,6,7,8),9,10,11); }'
 assert 136 'int main() { return add6(1,2,add6(3,add6(4,5,6,7,8,9),10,11,12,13),14,15,16); }'
+assert 32 'int main() { return ret32(); } int ret32() { return 32; }'
+assert 7 'int main() { return add2(3,4); } int add2(int x, int y) { return x+y; }'
+assert 1 'int main() { return sub2(4,3); } int sub2(int x, int y) { return x-y; }'
+assert 55 'int main() { return fib(9); } int fib(int x) { if (x<=1) return 1; return fib(x-1) + fib(x-2); }'
+
+# [21] 支持最多6个参数的函数定义
+echo "支持最多6个参数的函数定义"
+
 assert 32 'int main() { return ret32(); } int ret32() { return 32; }'
 assert 7 'int main() { return add2(3,4); } int add2(int x, int y) { return x+y; }'
 assert 1 'int main() { return sub2(4,3); } int sub2(int x, int y) { return x-y; }'
