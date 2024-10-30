@@ -63,21 +63,28 @@ typedef struct Type Type;
 // 类型种类
 typedef enum
 {
-    TY_INT,  // int 整型
-    TY_PTR,  // 指针
-    TY_FUNC, // 函数
+    TY_INT,   // int 整型
+    TY_PTR,   // 指针
+    TY_FUNC,  // 函数
+    TY_ARRAY, // 数组
 } TypeKind;
 
 struct Type
 {
     TypeKind kind;
+    int size; // 类型的大小（sizeof 返回的值）
+
     Type *base;
     Token *name; // 其类型对应的名称，如：变量名、函数名
+    
+    Type *next; // 下一类型
 
     // 函数类型
     Type *ReturnTy; // 函数返回的类型
     Type *Params;   // 形参
-    Type *next;     // 下一类型
+
+    // 数组类型
+    int ArrayLen; // 数组大小
 };
 
 // 声明一个全局变量，定义在 type.c 中。
@@ -88,6 +95,8 @@ bool isInteger(Type *Ty);
 Type *pointerTo(Type *Base);
 // 构建函数类型
 Type *funcType(Type *ReturnTy);
+// 创建数组类型
+Type *arrayOf(Type *Base, int size);
 // 复制类型
 Type *copyType(Type *Ty);
 // 为所有节点赋予类型
@@ -170,12 +179,12 @@ struct Func
 {
     Func *next; // 下一个函数
 
-    char *name;  // 函数名
-    
-    Node *body;    // 函数体
+    char *name; // 函数名
 
-    Obj *Params;   // 形参
-    Obj *locals;   // 函数的局部变量
+    Node *body; // 函数体
+
+    Obj *Params; // 形参
+    Obj *locals; // 函数的局部变量
 
     int stackSize; // 栈深度
 };

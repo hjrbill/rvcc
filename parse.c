@@ -25,6 +25,13 @@ static char *getIdent(Token *Tok)
     return strndup(Tok->Loc, Tok->Len);
 }
 
+static int getNum(Token *Tok)
+{
+    if (Tok->kind != TK_NUM)
+        errorTok(Tok, "expected a number");
+    return Tok->Val;
+}
+
 static Obj *newVar(char *name, Type *type)
 {
     Obj *var = calloc(1, sizeof(Obj));
@@ -53,8 +60,8 @@ static void createParamVars(Type *Param)
 // functionDefinition = declspec declarator "{" compoundStmt*
 // declspec = "int"
 // declarator = "*"* ident typeSuffix
-// typeSuffix = ("(" funcParams? ")")?
-// funcParams = param ("," param)*
+// typeSuffix = "(" funcParams | "[" num "]" | ε（empty）
+// funcParams = (param ("," param)*)? ")"
 // param = declspec declarator
 // compoundStmt = (declaration | stmt)* "}"
 // declaration = declspec (declarator ("=" expr)? ("," declarator ("=" expr)?)*)? ";"
@@ -78,6 +85,7 @@ static Func *function(Token **Rest, Token *Tok);
 static Type *declspec(Token **Rest, Token *Tok);
 static Type *declarator(Token **Rest, Token *Tok, Type *Ty);
 static Type *typeSuffix(Token **Rest, Token *Tok, Type *Ty);
+static Type *funcParams(Token **Rest, Token *Tok, Type *Ty);
 static Node *compoundStmt(Token **Rest, Token *Tok);
 static Node *declaration(Token **Rest, Token *Tok);
 static Node *stmt(Token **Rest, Token *Tok);
@@ -143,7 +151,7 @@ static Node *newAddBinary(NodeKind kind, Token *Tok, Node *LHS, Node *RHS)
         RHS = Tmp;
     }
     // ptr + num
-    RHS = newBinary(ND_MUL, Tok, RHS, newNumNode(Tok, 8)); // ptr + 1 == ptr + 1*sizeof(ptr->base), 基类暂时只支持 8 个字节的 int
+    RHS = newBinary(ND_MUL, Tok, RHS, newNumNode(Tok, LHS->type->size)); // ptr + 1 == ptr + 1*sizeof(ptr->base)
     return newBinary(ND_ADD, Tok, LHS, RHS);
 }
 
@@ -159,7 +167,7 @@ static Node *newSubBinary(NodeKind kind, Token *Tok, Node *LHS, Node *RHS)
     {
         Node *node = newBinary(ND_SUB, Tok, LHS, RHS);
         node->type = TyInt;
-        return newBinary(ND_DIV, Tok, node, newNumNode(Tok, 8));
+        return newBinary(ND_DIV, Tok, node, newNumNode(Tok, LHS->type->size));
     }
 
     // num - num
@@ -171,7 +179,7 @@ static Node *newSubBinary(NodeKind kind, Token *Tok, Node *LHS, Node *RHS)
     // ptr - num
     if (LHS->type->base && isInteger(RHS->type))
     {
-        RHS = newBinary(ND_MUL, Tok, RHS, newNumNode(Tok, 8));
+        RHS = newBinary(ND_MUL, Tok, RHS, newNumNode(Tok, LHS->type->size));
         return newBinary(ND_SUB, Tok, LHS, RHS);
     }
 
@@ -252,37 +260,46 @@ static Type *declarator(Token **Rest, Token *Tok, Type *type)
     return type;
 }
 
-// typeSuffix = ("(" funcParams? ")")?
-// funcParams = param ("," param)*
-// param = declspec declarator
+// typeSuffix = "(" funcParams | "[" num "]" | ε（empty）
 static Type *typeSuffix(Token **Rest, Token *Tok, Type *Ty)
 {
     // ("(" funcParams? ")")?
     if (equal(Tok, "("))
     {
-        Tok = Tok->next;
-
-        Type Head = {};
-        Type *Cur = &Head;
-
-        while (!equal(Tok, ")"))
-        {
-            // funcParams = param ("," param)*
-            // param = declspec declarator
-            if (Cur != &Head)
-                Tok = skip(Tok, ",");
-            Type *BaseTy = declspec(&Tok, Tok);
-            Type *DeclarTy = declarator(&Tok, Tok, BaseTy);
-            Cur->next = copyType(DeclarTy); // 将类型复制到形参链表一份
-            Cur = Cur->next;
-        }
-
-        Ty = funcType(Ty);
-        Ty->Params = Head.next; // 传递形参
-        *Rest = Tok->next;
-        return Ty;
+        return funcParams(Rest, Tok->next, Ty);
+    }
+    else if (equal(Tok, "["))
+    {
+        int size=getNum(Tok->next);
+        *Rest = skip(Tok->next->next, "]");
+        return arrayOf(Ty, size);
     }
     *Rest = Tok;
+    return Ty;
+}
+
+// funcParams = (param ("," param)*)? ")"
+// param = declspec declarator
+static Type *funcParams(Token **Rest, Token *Tok, Type *Ty)
+{
+    Type Head = {};
+    Type *Cur = &Head;
+
+    while (!equal(Tok, ")"))
+    {
+        // funcParams = param ("," param)*
+        // param = declspec declarator
+        if (Cur != &Head)
+            Tok = skip(Tok, ",");
+        Type *BaseTy = declspec(&Tok, Tok);
+        Type *DeclarTy = declarator(&Tok, Tok, BaseTy);
+        Cur->next = copyType(DeclarTy); // 将类型复制到形参链表一份
+        Cur = Cur->next;
+    }
+
+    Ty = funcType(Ty);
+    Ty->Params = Head.next; // 传递形参
+    *Rest = Tok->next;
     return Ty;
 }
 
