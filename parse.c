@@ -60,7 +60,7 @@ static void createParamVars(Type *Param)
 // functionDefinition = declspec declarator "{" compoundStmt*
 // declspec = "int"
 // declarator = "*"* ident typeSuffix
-// typeSuffix = "(" funcParams | "[" num "]" | ε（empty）
+// typeSuffix = "(" funcParams | "[" num "]" typeSuffix | ε
 // funcParams = (param ("," param)*)? ")"
 // param = declspec declarator
 // compoundStmt = (declaration | stmt)* "}"
@@ -151,7 +151,7 @@ static Node *newAddBinary(NodeKind kind, Token *Tok, Node *LHS, Node *RHS)
         RHS = Tmp;
     }
     // ptr + num
-    RHS = newBinary(ND_MUL, Tok, RHS, newNumNode(Tok, LHS->type->size)); // ptr + 1 == ptr + 1*sizeof(ptr->base)
+    RHS = newBinary(ND_MUL, Tok, RHS, newNumNode(Tok, LHS->type->base->size)); // ptr + 1 == ptr + 1*sizeof(ptr->base)
     return newBinary(ND_ADD, Tok, LHS, RHS);
 }
 
@@ -260,22 +260,23 @@ static Type *declarator(Token **Rest, Token *Tok, Type *type)
     return type;
 }
 
-// typeSuffix = "(" funcParams | "[" num "]" | ε（empty）
-static Type *typeSuffix(Token **Rest, Token *Tok, Type *Ty)
+// typeSuffix = "(" funcParams | "[" num "]" typeSuffix | ε
+static Type *typeSuffix(Token **Rest, Token *Tok, Type *type)
 {
     // ("(" funcParams? ")")?
     if (equal(Tok, "("))
     {
-        return funcParams(Rest, Tok->next, Ty);
+        return funcParams(Rest, Tok->next, type);
     }
     else if (equal(Tok, "["))
     {
-        int size=getNum(Tok->next);
-        *Rest = skip(Tok->next->next, "]");
-        return arrayOf(Ty, size);
+        int size = getNum(Tok->next);
+        Tok = skip(Tok->next->next, "]");
+        type = typeSuffix(Rest, Tok, type);
+        return arrayOf(type, size);
     }
     *Rest = Tok;
-    return Ty;
+    return type;
 }
 
 // funcParams = (param ("," param)*)? ")"
