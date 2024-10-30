@@ -36,6 +36,23 @@ static void pop(char *Reg)
     Depth--;
 }
 
+// 加载 a0 指向的值
+static void load(Type *Ty)
+{
+    if (Ty->kind == TY_ARRAY)
+        return;
+    printf("  # 读取 a0 中存放的地址，得到的值存入 a0\n");
+    printf("  ld a0, 0(a0)\n");
+}
+
+// 将栈顶值 (为一个地址) 存入 a0
+static void store(void)
+{
+    pop("a1");
+    printf("  # 将 a0 的值，写入到 a1 中存放的地址\n");
+    printf("  sd a0, 0(a1)\n");
+};
+
 // 计算给定节点的绝对地址，如果报错，说明节点不在内存中
 static void getAddr(Node *node)
 {
@@ -64,13 +81,11 @@ static void genExpr(Node *node)
         // 计算出变量的地址，然后存入 a0
         getAddr(node);
         // 访问 a0 地址中存储的数据，存入到 a0 当中
-        printf("  # 读取 a0 中存放的地址，得到的值存入 a0\n");
-        printf("  ld a0, 0(a0)\n");
+        load(node->type);
         return;
     case ND_DEREF:
         genExpr(node->LHS);
-        printf("  # 读取 a0 中存放的地址，得到的值存入 a0\n");
-        printf("  ld a0, 0(a0)\n");
+        load(node->type);
         return;
     case ND_ADDR:
         getAddr(node->LHS);
@@ -85,9 +100,7 @@ static void genExpr(Node *node)
         getAddr(node->LHS); // 左边为被赋值的地址
         push();
         genExpr(node->RHS); // 右边为赋予的值
-        pop("a1");
-        printf("  # 将 a0 的值，写入到 a1 中存放的地址\n");
-        printf("  sd a0, 0(a1)\n");
+        store();
         return;
     case ND_NUM: // 是整型
         printf("  # 将%d加载到 a0 中\n", node->Val);
@@ -278,7 +291,7 @@ static void assignLVarOffsets(Func *fn)
         int offset = 0;
         for (Obj *var = Fn->locals; var; var = var->next)
         {
-            offset += 8;
+            offset += var->type->size;
             var->offset = -offset;
         }
         Fn->stackSize = alignTo(offset, 16); // 将栈对齐到 16 字节（内存对齐），优化处理器访问

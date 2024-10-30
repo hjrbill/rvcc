@@ -1,6 +1,6 @@
 #include "rvcc.h"
 
-Type *TyInt = &(Type){TY_INT}; // 为 int 类型创建 Type 常（变）量
+Type *TyInt = &(Type){TY_INT, 8}; // 为 int 类型创建 Type 常（变）量
 
 bool isInteger(Type *Ty)
 {
@@ -13,6 +13,7 @@ Type *pointerTo(Type *base)
     Type *ptr = calloc(1, sizeof(Type));
     ptr->kind = TY_PTR;
     ptr->base = base;
+    ptr->size = 8;
     return ptr;
 }
 
@@ -22,6 +23,18 @@ Type *funcType(Type *ReturnTy)
     Type *Ty = calloc(1, sizeof(Type));
     Ty->kind = TY_FUNC;
     Ty->ReturnTy = ReturnTy;
+    return Ty;
+}
+
+// 创建一个数组类型
+Type *arrayOf(Type *Base, int Len)
+{
+    Type *Ty = calloc(1, sizeof(Type));
+    Ty->kind = TY_ARRAY;
+
+    Ty->size = Base->size * Len;
+    Ty->base = Base;
+    Ty->ArrayLen = Len;
     return Ty;
 }
 
@@ -68,7 +81,13 @@ void addType(Node *node)
     case ND_MUL:
     case ND_DIV:
     case ND_NEG:
+        node->type = node->LHS->type;
+        return;
     case ND_ASSIGN:
+        if (node->LHS->type->kind == TY_ARRAY) // 赋值操作符左部必须不是数组
+        {
+            errorTok(node->LHS->Tok, "not an lvalue");
+        }
         node->type = node->LHS->type;
         return;
 
@@ -88,12 +107,17 @@ void addType(Node *node)
 
     // 将取址节点的类型设为 指针，其基类为其左部的类型
     case ND_ADDR:
-        node->type = pointerTo(node->LHS->type);
+        Type *Ty = node->LHS->type;
+        // 左部如果是数组，则为指向数组基类的指针
+        if (Ty->kind == TY_ARRAY)
+            node->type = pointerTo(Ty->base);
+        else
+            node->type = pointerTo(Ty);
         return;
 
     // 如果解引用指向的是指针，则为指针指向的类型；否则报错
     case ND_DEREF:
-        if (node->LHS->type->kind != TY_PTR)
+        if (!node->LHS->type->base) // 如果不存在基类，则不可能能解引用
         {
             errorTok(node->Tok, "invalid pointer dereference");
         }
