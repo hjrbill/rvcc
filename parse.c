@@ -80,7 +80,7 @@ static void createParamVars(Type *Param)
 // mul = unary ("*" unary | "/" unary)*
 // unary = ("+" | "-" | "*" | "&") unary | postfix
 // postfix = primary ("[" expr "]")*
-// primary = "(" expr ")" | ident | Funcall | num
+// primary = "(" expr ")" | "sizeof" unary | ident | Funcall | num
 // Funcall = ident "(" (assign ("," assign)*)? ")"
 static Func *function(Token **Rest, Token *Tok);
 static Type *declspec(Token **Rest, Token *Tok);
@@ -633,7 +633,7 @@ static Node *postfix(Token **Rest, Token *Tok)
     return node;
 }
 
-// primary = "(" expr ")" | ident args? | num
+// primary = "(" expr ")" | "sizeof" unary | ident | Funcall | num
 // args = "(" ")"
 // @param Rest 用于向上传递仍需要解析的 Token 的首部
 // @param Tok 当前正在解析的 Token
@@ -644,6 +644,12 @@ static Node *primary(Token **Rest, Token *Tok)
         Node *node = expr(&Tok, Tok->next);
         *Rest = skip(Tok, ")");
         return node;
+    }
+    else if (equal(Tok, "sizeof"))
+    {
+        Node *node = unary(Rest, Tok->next);
+        addType(node);
+        return newNumNode(Tok, node->type->size);
     }
     else if (Tok->kind == TK_IDENT)
     {
