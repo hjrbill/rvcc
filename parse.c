@@ -78,7 +78,8 @@ static void createParamVars(Type *Param)
 // relational = add ("<" add | "<=" add | ">" add | ">=" add)*
 // add = mul ("+" mul | "-" mul)*
 // mul = unary ("*" unary | "/" unary)*
-// unary = ("+" | "-" | "*" | "&") unary | primary
+// unary = ("+" | "-" | "*" | "&") unary | postfix
+// postfix = primary ("[" expr "]")*
 // primary = "(" expr ")" | ident | Funcall | num
 // Funcall = ident "(" (assign ("," assign)*)? ")"
 static Func *function(Token **Rest, Token *Tok);
@@ -97,6 +98,7 @@ static Node *relational(Token **Rest, Token *Tok);
 static Node *add(Token **Rest, Token *Tok);
 static Node *mul(Token **Rest, Token *Tok);
 static Node *unary(Token **Rest, Token *Tok);
+static Node *postfix(Token **Rest, Token *Tok);
 static Node *primary(Token **Rest, Token *Tok);
 static Node *Funcall(Token **Rest, Token *Tok);
 
@@ -125,7 +127,7 @@ static Node *newBinary(NodeKind kind, Token *Tok, Node *lhs, Node *rhs)
 }
 
 // 特殊处理加法运算节点，以处理各类型的转换问题
-static Node *newAddBinary(NodeKind kind, Token *Tok, Node *LHS, Node *RHS)
+static Node *newAddBinary(Token *Tok, Node *LHS, Node *RHS)
 {
     // 提前为左右部添加类型
     addType(LHS);
@@ -156,7 +158,7 @@ static Node *newAddBinary(NodeKind kind, Token *Tok, Node *LHS, Node *RHS)
 }
 
 // 特殊处理减法运算节点，以处理各类型的转换问题
-static Node *newSubBinary(NodeKind kind, Token *Tok, Node *LHS, Node *RHS)
+static Node *newSubBinary(Token *Tok, Node *LHS, Node *RHS)
 {
     // 提前为左右部添加类型
     addType(LHS);
@@ -552,11 +554,11 @@ static Node *add(Token **Rest, Token *Tok)
     {
         if (equal(Tok, "+"))
         {
-            node = newAddBinary(ND_ADD, Tok, node, mul(&Tok, Tok->next));
+            node = newAddBinary(Tok, node, mul(&Tok, Tok->next));
         }
         else if (equal(Tok, "-"))
         {
-            node = newSubBinary(ND_SUB, Tok, node, mul(&Tok, Tok->next));
+            node = newSubBinary(Tok, node, mul(&Tok, Tok->next));
         }
         else
         {
@@ -590,7 +592,7 @@ static Node *mul(Token **Rest, Token *Tok)
     }
 }
 
-// unary = ("+" | "-" | "*" | "&") unary | primary
+// unary = ("+" | "-" | "*" | "&") unary | postfix
 // @param Rest 用于向上传递仍需要解析的 Token 的首部
 // @param Tok 当前正在解析的 Token
 static Node *unary(Token **Rest, Token *T)
@@ -611,7 +613,24 @@ static Node *unary(Token **Rest, Token *T)
     {
         return newUnary(ND_ADDR, T, unary(Rest, T->next));
     }
-    return primary(Rest, T); // Tok 未进行运算，需要解析首部仍为 Rest
+    return postfix(Rest, T); // Tok 未进行运算，需要解析首部仍为 Rest
+}
+
+// postfix = primary ("[" expr "]")*
+static Node *postfix(Token **Rest, Token *Tok)
+{
+    Node *node = primary(&Tok, Tok);
+
+    while (equal(Tok, "["))
+    {
+        Token *start = Tok->next;
+        Node *Idx = expr(&Tok, Tok->next);
+        Tok = skip(Tok, "]");
+        node = newUnary(ND_DEREF, start, newAddBinary(start, node, Idx));
+    }
+
+    *Rest = Tok;
+    return node;
 }
 
 // primary = "(" expr ")" | ident args? | num
