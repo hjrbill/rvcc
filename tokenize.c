@@ -133,22 +133,117 @@ static bool isKeyword(Token *T)
     return false;
 }
 
-// 读取字符串字面量
-static Token *readStringLiteral(char *Start)
+// 返回一位十六进制的十进制（hexDigit = [0-9a-fA-F]）
+static int fromHex(char C)
 {
-    char *P = Start + 1;
+    if ('0' <= C && C <= '9')
+        return C - '0';
+    if ('a' <= C && C <= 'f')
+        return C - 'a' + 10;
+    return C - 'A' + 10;
+}
+
+// 处理转义字符
+static int readEscapedChar(char **NewPos, char *P)
+{
+    if ('0' <= *P && *P <= '7')
+    {
+        // 读取一个不长于三位的八进制数字，
+        // \abc = (a*8+b)*8+c
+        int C = *P++ - '0';
+        if ('0' <= *P && *P <= '7')
+        {
+            C = (C << 3) + (*P++ - '0');
+            if ('0' <= *P && *P <= '7')
+                C = (C << 3) + (*P++ - '0');
+        }
+        *NewPos = P;
+        return C;
+    }
+    else if (*P == 'x')
+    {
+        P++;
+        // 判断是否为十六进制数字
+        if (!isxdigit(*P))
+            errorAt(P, "invalid hex escape sequence");
+        int C = 0;
+        // \xWXYZ = ((W*16+X)*16+Y)*16+Z
+        for (; isxdigit(*P); P++)
+            C = (C << 4) + fromHex(*P);
+        *NewPos = P;
+        return C;
+    }
+
+    *NewPos = P + 1; // 跳到转义字符后面的字符
+    switch (*P)
+    {
+    case 'a': // 响铃（警报）
+        return '\a';
+    case 'b': // 退格
+        return '\b';
+    case 't': // 水平制表符，tab
+        return '\t';
+    case 'n': // 换行
+        return '\n';
+    case 'v': // 垂直制表符
+        return '\v';
+    case 'f': // 换页
+        return '\f';
+    case 'r': // 回车
+        return '\r';
+    // GNU C 拓展
+    case 'e': // 转义符
+        return 27;
+    default: // 默认将原字符返回
+        return *P;
+    }
+}
+
+// 读取到字符串字面量尾部（'"'）
+static char *stringLiteralEnd(char *P)
+{
+    char *start = P;
     while (*P != '"')
     {
         if (*P == '\n' || *P == '\0') // 遇到换行符和'\0'则报错
         {
-            errorAt(Start, "unclosed string literal");
+            errorAt(start, "unclosed string literal");
+        }
+        else if (*P == '\\')
+        {
+            P++;
         }
         P++;
     }
+    return P;
+}
 
-    Token *Tok = newToken(TK_STR, Start, P + 1);
-    Tok->type = arrayOf(TyChar, P - Start);
-    Tok->Str = strndup(Start + 1, P - Start - 1); // 拷贝双引号间的内容，结果是\0的 char *类型
+static Token *readStringLiteral(char *Start)
+{
+    // 读取到字符串字面量的右引号
+    char *End = stringLiteralEnd(Start + 1);
+    // 定义一个与字符串字面量内字符数 +1 的 Buf，用来存储最大位数的字符串字面量
+    char *Buf = calloc(1, End - Start);
+    // 实际的字符位数，一个转义字符为 1 位
+    int Len = 0;
+
+    // 将读取后的结果写入 Buf
+    for (char *P = Start + 1; P < End;)
+    {
+        if (*P == '\\')
+        {
+            Buf[Len++] = readEscapedChar(&P, P + 1);
+        }
+        else
+        {
+            Buf[Len++] = *P++;
+        }
+    }
+
+    // Token 这里需要包含带双引号的字符串字面量
+    Token *Tok = newToken(TK_STR, Start, End + 1);
+    Tok->type = arrayOf(TyChar, Len + 1); // 为\0增加一位
+    Tok->Str = Buf;
     return Tok;
 }
 
