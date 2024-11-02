@@ -5,7 +5,7 @@ static int Depth;
 // 用于存储函数参数的寄存器
 static char *ArgReg[] = {"a0", "a1", "a2", "a3", "a4", "a5"};
 // 当前的函数
-static Func *CurrentFn;
+static Obj *CurrentFn;
 
 static void genExpr(Node *Nd);
 
@@ -284,10 +284,15 @@ static int alignTo(int N, int Align)
     return (N + Align - 1) / Align * Align;
 }
 
-static void assignLVarOffsets(Func *fn)
+static void assignLVarOffsets(Obj *fn)
 { // 为每个函数计算其变量所用的栈空间
-    for (Func *Fn = fn; Fn; Fn = Fn->next)
+    for (Obj *Fn = fn; Fn; Fn = Fn->next)
     {
+        if (!Fn->isFunction)
+        {
+            continue; // 不是函数，跳过
+        }
+
         int offset = 0;
         for (Obj *var = Fn->locals; var; var = var->next)
         {
@@ -298,14 +303,15 @@ static void assignLVarOffsets(Func *fn)
     }
 }
 
-void codegen(Func *fn)
+void codegen(Obj *fn)
 {
     assignLVarOffsets(fn);
     // 为每个函数单独生成代码
-    for (Func *Fn = fn; Fn; Fn = Fn->next)
+    for (Obj *Fn = fn; Fn; Fn = Fn->next)
     {
         printf("\n  # 定义全局%s段\n", Fn->name);
-        printf("  .globl %s\n", Fn->name);
+        printf("  .globl %s\n", Fn->name); // 指示汇编器 Fn->name 指定的符号是全局的，可以在其他地方被访问
+        printf("  .text\n"); // 指示汇编器接下来的代码属于程序的文本段
         printf("# =====%s段开始===============\n", Fn->name);
         printf("# %s段标签\n", Fn->name);
         printf("%s:\n", Fn->name);

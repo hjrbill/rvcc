@@ -1,6 +1,8 @@
 #include "rvcc.h"
 
-Obj *Locals; // 存储当前解析的函数的局部变量
+// 存储当前解析种的变量
+Obj *Locals;  // 局部变量 (局部函数/嵌套函数)
+Obj *Globals; // 全局变量（全局函数）
 
 static Obj *FindVarByName(Token *Tok)
 {
@@ -38,9 +40,27 @@ static Obj *newVar(char *name, Type *type)
     var->name = name;
     var->type = type;
 
+    return var;
+}
+
+static Obj *newLocalVar(char *name, Type *type)
+{
+    Obj *var = newVar(name, type);
+
     // 将新变量插入到 Locals 的头部
     var->next = Locals;
     Locals = var;
+
+    return var;
+}
+
+static Obj *newGlobalVar(char *name, Type *type)
+{
+    Obj *var = newVar(name, type);
+
+    // 将新变量插入到 Globals 的头部
+    var->next = Globals;
+    Globals = var;
 
     return var;
 }
@@ -52,11 +72,11 @@ static void createParamVars(Type *Param)
         // 先将最底部的加入 Locals 中，之后逐个加入到顶部，保持顺序不变
         createParamVars(Param->next);
         // 添加到 Locals 中
-        newVar(getIdent(Param->name), Param);
+        newLocalVar(getIdent(Param->name), Param);
     }
 }
 
-// program = functionDefinition*
+// program = (functionDefinition | globalVariable)*
 // functionDefinition = declspec declarator "{" compoundStmt*
 // declspec = "int"
 // declarator = "*"* ident typeSuffix
@@ -82,7 +102,7 @@ static void createParamVars(Type *Param)
 // postfix = primary ("[" expr "]")*
 // primary = "(" expr ")" | "sizeof" unary | ident | Funcall | num
 // Funcall = ident "(" (assign ("," assign)*)? ")"
-static Func *function(Token **Rest, Token *Tok);
+static Token *function(Token *Tok,Type *declspec);
 static Type *declspec(Token **Rest, Token *Tok);
 static Type *declarator(Token **Rest, Token *Tok, Type *Ty);
 static Type *typeSuffix(Token **Rest, Token *Tok, Type *Ty);
@@ -205,27 +225,39 @@ static Node *newVarNode(Token *Tok, Obj *var)
     return node;
 }
 
-// functionDefinition = declspec declarator "{" compoundStmt*
-static Func *function(Token **Rest, Token *Tok)
+// 语法解析入口函数
+// program = (functionDefinition | globalVariable)*
+Obj *parse(Token *Tok)
 {
-    Type *Ty = declspec(&Tok, Tok);
-    Ty = declarator(&Tok, Tok, Ty);
+    Globals = NULL;
+
+    while (Tok->kind != TK_EOF)
+    {
+        Type *baseType = declspec(&Tok, Tok);
+        Tok = function(Tok, baseType);
+    }
+    return Globals;
+}
+
+// functionDefinition = declspec declarator "{" compoundStmt*
+static Token *function(Token *Tok, Type *declspec)
+{
+    Type *Ty = declarator(&Tok, Tok, declspec);
+    Obj *fn = newGlobalVar(getIdent(Ty->name), Ty); // 全局函数是一种特殊的全局变量
+    fn->isFunction = true;
 
     // 清空上一个函数的 Locals
     Locals = NULL;
-
-    Func *fn = calloc(1, sizeof(Func));
-    // 函数名
-    fn->name = getIdent(Ty->name);
     // 函数参数
     createParamVars(Ty->Params);
     fn->Params = Locals;
 
     Tok = skip(Tok, "{");
-    fn->body = compoundStmt(Rest, Tok);
+    // 函数体存储语句的 AST，Locals 存储变量
+    fn->body = compoundStmt(&Tok, Tok);
     fn->locals = Locals;
 
-    return fn;
+    return Tok;
 }
 
 // declspec = "int"
@@ -355,7 +387,7 @@ static Node *declaration(Token **Rest, Token *Tok)
         }
 
         Type *Ty = declarator(&Tok, Tok, baseType);
-        Obj *Var = newVar(getIdent(Ty->name), Ty);
+        Obj *Var = newLocalVar(getIdent(Ty->name), Ty);
 
         // 如果不存在"="则为变量声明，不需要生成节点，已经存储在 Locals 中了
         if (!equal(Tok, "="))
@@ -709,18 +741,4 @@ static Node *Funcall(Token **Rest, Token *Tok)
 
     *Rest = Tok->next;
     return node;
-}
-
-// 语法解析入口函数
-// program = functionDefinition*
-Func *parse(Token *Tok)
-{
-    Func Head = {};
-    Func *Cur = &Head;
-
-    while (Tok->kind != TK_EOF)
-    {
-        Cur = Cur->next = function(&Tok, Tok);
-    }
-    return Head.next;
 }

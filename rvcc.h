@@ -76,7 +76,7 @@ struct Type
 
     Type *base;
     Token *name; // 其类型对应的名称，如：变量名、函数名
-    
+
     Type *next; // 下一类型
 
     // 函数类型
@@ -137,15 +137,30 @@ typedef enum
     ND_NUM // 整形
 } NodeKind;
 
+// 变量或函数
 typedef struct Obj Obj;
 struct Obj
 {
-    Obj *next; // 下一个对象
+    Obj *next;  // 下一个对象
+    char *name; // 对象名称
+    Type *type; // 对象类型
 
-    Type *type; // 变量类型
-    char *name; // 对象名
+    // 是 局部或全局 变量
+    bool isLocal;
+    // 变量
     int offset; // 相对于 fp 的偏移量
+
+    // 函数 或 全局变量
+    bool isFunction;
+    // 函数
+    Node *body;    // 函数体
+    Obj *Params;   // 形参
+    Obj *locals;   // 函数的局部变量
+    int stackSize; // 栈深度
 };
+
+// 语法解析入口函数
+Obj *parse(Token *Tok);
 
 struct Node
 {
@@ -174,27 +189,9 @@ struct Node
     int Val;    // ND_NUM 类型的值
 };
 
-typedef struct Func Func;
-struct Func
-{
-    Func *next; // 下一个函数
-
-    char *name; // 函数名
-
-    Node *body; // 函数体
-
-    Obj *Params; // 形参
-    Obj *locals; // 函数的局部变量
-
-    int stackSize; // 栈深度
-};
-
-// 语法解析入口函数
-Func *parse(Token *Tok);
-
 //
 // 语义分析与代码生成
 //
 
 // 代码生成入口函数
-void codegen(Func *node);
+void codegen(Obj *node);
