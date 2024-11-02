@@ -13,6 +13,14 @@ static Obj *FindVarByName(Token *Tok)
             return p;
         }
     }
+
+    for (Obj *p = Globals; p; p = p->next)
+    {
+        if (strlen(p->name) == Tok->Len && !strncmp(p->name, Tok->Loc, Tok->Len))
+        {
+            return p;
+        }
+    }
     return NULL;
 }
 
@@ -46,6 +54,7 @@ static Obj *newVar(char *name, Type *type)
 static Obj *newLocalVar(char *name, Type *type)
 {
     Obj *var = newVar(name, type);
+    var->isLocal = true;
 
     // 将新变量插入到 Locals 的头部
     var->next = Locals;
@@ -78,6 +87,7 @@ static void createParamVars(Type *Param)
 
 // program = (functionDefinition | globalVariable)*
 // functionDefinition = declspec declarator "{" compoundStmt*
+// globalVariable = declspec ( declarator ",")* ";"
 // declspec = "int"
 // declarator = "*"* ident typeSuffix
 // typeSuffix = "(" funcParams | "[" num "]" typeSuffix | ε
@@ -102,7 +112,8 @@ static void createParamVars(Type *Param)
 // postfix = primary ("[" expr "]")*
 // primary = "(" expr ")" | "sizeof" unary | ident | Funcall | num
 // Funcall = ident "(" (assign ("," assign)*)? ")"
-static Token *function(Token *Tok,Type *declspec);
+static Token *function(Token *Tok, Type *declspec);
+static Token *globalVariable(Token *Tok, Type *declspec);
 static Type *declspec(Token **Rest, Token *Tok);
 static Type *declarator(Token **Rest, Token *Tok, Type *Ty);
 static Type *typeSuffix(Token **Rest, Token *Tok, Type *Ty);
@@ -225,6 +236,20 @@ static Node *newVarNode(Token *Tok, Obj *var)
     return node;
 }
 
+// 区分 函数还是全局变量
+static bool isFunction(Token *Tok)
+{
+    if (equal(Tok, ";"))
+    {
+        return false;
+    }
+
+    // 虚设变量，用于调用 declarator 以确定是否为函数
+    Type Dummy = {};
+    Type *Ty = declarator(&Tok, Tok, &Dummy);
+    return Ty->kind == TY_FUNC;
+}
+
 // 语法解析入口函数
 // program = (functionDefinition | globalVariable)*
 Obj *parse(Token *Tok)
@@ -234,9 +259,38 @@ Obj *parse(Token *Tok)
     while (Tok->kind != TK_EOF)
     {
         Type *baseType = declspec(&Tok, Tok);
-        Tok = function(Tok, baseType);
+
+        if (isFunction(Tok))
+        {
+            Tok = function(Tok, baseType);
+        }
+        else{
+            Tok = globalVariable(Tok, baseType);
+        }
     }
     return Globals;
+}
+
+// globalVariable = declspec ( declarator ",")* ";"
+static Token *globalVariable(Token *Tok, Type *declspec)
+{
+    bool isFirst = true;
+
+    while (!consume(&Tok,Tok, ";"))
+    {
+        if (!isFirst)
+        {
+            Tok = skip(Tok, ",");
+        }
+        else
+        {
+            isFirst = false;
+        }
+
+        Type *Ty = declarator(&Tok, Tok, declspec);
+        Obj *obj = newGlobalVar(getIdent(Ty->name), Ty);
+    }
+    return Tok;
 }
 
 // functionDefinition = declspec declarator "{" compoundStmt*

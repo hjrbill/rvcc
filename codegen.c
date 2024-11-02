@@ -59,10 +59,17 @@ static void getAddr(Node *node)
     switch (node->kind)
     {
     case ND_VAR:
-        printf("  # 获取变量%s，栈内地址为%d(fp)\n", node->Var->name,
-               node->Var->offset);
-        // 取出变量相对于 fp 的偏移量
-        printf("  addi a0, fp, %d\n", node->Var->offset);
+        if (node->Var->isLocal)
+        {
+            printf("  # 获取局部变量%s的栈内地址为%d(fp)\n", node->Var->name,
+                   node->Var->offset);
+            printf("  addi a0, fp, %d\n", node->Var->offset); // 取出变量相对于 fp 的偏移量
+        }
+        else
+        {
+            printf("  # 获取全局变量%s的栈内地址\n", node->Var->name);
+            printf("  la a0, %s\n", node->Var->name);
+        }
         return;
     case ND_DEREF:
         genExpr(node->LHS);
@@ -303,15 +310,41 @@ static void assignLVarOffsets(Obj *fn)
     }
 }
 
-void codegen(Obj *fn)
+// 生成数据段（数据段是存储程序数据的内存区域，包括全局变量、静态变量、常量和程序中分配的其他数据结构。）
+static void emitData(Obj *Prog)
 {
-    assignLVarOffsets(fn);
-    // 为每个函数单独生成代码
-    for (Obj *Fn = fn; Fn; Fn = Fn->next)
+    for (Obj *Var = Prog; Var; Var = Var->next)
     {
+        if (Var->isFunction)
+        {
+            continue;
+        }
+
+        printf("  # 数据段标签\n");
+        printf("  .data\n"); // 指示汇编器接下来的代码属于数据段
+        printf("\n  # 定义全局%s段\n", Var->name);
+        printf("  .globl %s\n", Var->name); // 指示汇编器 Var->name 指定的符号是全局的，可以在其他地方被访问
+        printf("  # 全局变量%s\n", Var->name);
+        printf("  %s:\n", Var->name);
+        printf("  # 零填充%d位\n", Var->type->size);
+        printf("  .zero %d\n", Var->type->size); // 为全局变量 Var->Name 分配 Var->type->Size 字节的内存空间，并将其初始化为零
+    }
+}
+
+// 生成文本段（数据段）
+void emitText(Obj *Prog)
+{
+    for (Obj *Fn = Prog; Fn; Fn = Fn->next)
+    {
+        if (!Fn->isFunction)
+        {
+            continue;
+        }
+
         printf("\n  # 定义全局%s段\n", Fn->name);
         printf("  .globl %s\n", Fn->name); // 指示汇编器 Fn->name 指定的符号是全局的，可以在其他地方被访问
-        printf("  .text\n"); // 指示汇编器接下来的代码属于程序的文本段
+        printf("  # 文本段标签\n");
+        printf("  .text\n");               // 指示汇编器接下来的代码属于程序的文本段
         printf("# =====%s段开始===============\n", Fn->name);
         printf("# %s段标签\n", Fn->name);
         printf("%s:\n", Fn->name);
@@ -370,4 +403,14 @@ void codegen(Obj *fn)
         printf("  # 返回 a0 值给系统调用\n");
         printf("  ret\n");
     }
+}
+
+void codegen(Obj *Prog)
+{
+    // 计算局部变量的偏移量
+    assignLVarOffsets(Prog);
+    // 生成数据段
+    emitData(Prog);
+    // 生成文本段
+    emitText(Prog);
 }
