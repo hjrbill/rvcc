@@ -339,12 +339,32 @@ static void emitData(Obj *Prog)
 
         printf("  # 数据段标签\n");
         printf("  .data\n"); // 指示汇编器接下来的代码属于数据段
-        printf("\n  # 定义全局%s段\n", Var->name);
-        printf("  .globl %s\n", Var->name); // 指示汇编器 Var->name 指定的符号是全局的，可以在其他地方被访问
-        printf("  # 全局变量%s\n", Var->name);
-        printf("  %s:\n", Var->name);
-        printf("  # 零填充%d位\n", Var->type->size);
-        printf("  .zero %d\n", Var->type->size); // 为全局变量 Var->Name 分配 Var->type->Size 字节的内存空间，并将其初始化为零
+        if (Var->InitData)
+        {
+            printf("%s:\n", Var->name);
+            for (int i = 0; i < Var->type->size; i++)
+            {
+                char ch = Var->InitData[i];
+                if (isprint(ch)) // 判断是否为可打印字符
+                {
+                    printf("  # 字符：%c\n", ch);
+                    printf("  .byte %d\n", ch);
+                }
+                else
+                {
+                    printf("  .byte %d\n", ch);
+                }
+            }
+        }
+        else
+        {
+            printf("  # 全局段%s\n", Var->name);
+            printf("  .globl %s\n", Var->name); // 指示汇编器 Var->name 指定的符号是全局的，可以在其他地方被访问
+            printf("  # 全局变量%s\n", Var->name);
+            printf("%s:\n", Var->name);
+            printf("  # 全局变量零填充%d位\n", Var->type->size);
+            printf("  .zero %d\n", Var->type->size); // 为全局变量 Var->Name 分配 Var->type->Size 字节的内存空间，并将其初始化为零
+        }
     }
 }
 

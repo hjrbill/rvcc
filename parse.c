@@ -42,6 +42,12 @@ static int getNum(Token *Tok)
     return Tok->Val;
 }
 
+// 判断是否为类型名
+static bool isTypename(Token *Tok)
+{
+    return equal(Tok, "char") || equal(Tok, "int");
+}
+
 static Obj *newVar(char *name, Type *type)
 {
     Obj *var = calloc(1, sizeof(Obj));
@@ -74,6 +80,27 @@ static Obj *newGlobalVar(char *name, Type *type)
     return var;
 }
 
+// 生成唯一名称
+static char *newUniqueName(void)
+{
+    static int Id = 0;
+    return format(".L..%d", Id++); // 创建唯一的标签（变量名）
+}
+
+// 生成匿名全局变量
+static Obj *newAnonGVar(Type *Ty)
+{
+    return newGlobalVar(newUniqueName(), Ty);
+}
+
+// 生成字符串字面量
+static Obj *newStringLiteral(char *Str, Type *Ty)
+{
+    Obj *Var = newAnonGVar(Ty);
+    Var->InitData = Str;
+    return Var;
+}
+
 static void createParamVars(Type *Param)
 {
     if (Param)
@@ -83,12 +110,6 @@ static void createParamVars(Type *Param)
         // 添加到 Locals 中
         newLocalVar(getIdent(Param->name), Param);
     }
-}
-
-// 判断是否为类型名
-static bool isTypename(Token *Tok)
-{
-    return equal(Tok, "char") || equal(Tok, "int");
 }
 
 // program = (functionDefinition | globalVariable)*
@@ -116,7 +137,7 @@ static bool isTypename(Token *Tok)
 // mul = unary ("*" unary | "/" unary)*
 // unary = ("+" | "-" | "*" | "&") unary | postfix
 // postfix = primary ("[" expr "]")*
-// primary = "(" expr ")" | "sizeof" unary | ident | Funcall | num
+// primary = "(" expr ")" | "sizeof" unary | ident funcArgs? | str | num
 // Funcall = ident "(" (assign ("," assign)*)? ")"
 static Token *function(Token *Tok, Type *declspec);
 static Token *globalVariable(Token *Tok, Type *declspec);
@@ -731,8 +752,7 @@ static Node *postfix(Token **Rest, Token *Tok)
     return node;
 }
 
-// primary = "(" expr ")" | "sizeof" unary | ident | Funcall | num
-// args = "(" ")"
+// primary = "(" expr ")" | "sizeof" unary | ident funcArgs? | str | num
 // @param Rest 用于向上传递仍需要解析的 Token 的首部
 // @param Tok 当前正在解析的 Token
 static Node *primary(Token **Rest, Token *Tok)
@@ -764,6 +784,12 @@ static Node *primary(Token **Rest, Token *Tok)
         Node *node = newVarNode(Tok, var);
         *Rest = Tok->next;
         return node;
+    }
+    else if (Tok->kind == TK_STR)
+    {
+        Obj *Var = newStringLiteral(Tok->Str, Tok->type);
+        *Rest = Tok->next;
+        return newVarNode(Tok, Var);
     }
     else if (Tok->kind == TK_NUM)
     {

@@ -14,14 +14,24 @@
 //
 
 //
+// 字符串处理
+//
+
+char *format(char *Fmt, ...);
+
+//
 // 词法分析
 //
+
+typedef struct Type Type;
+
 typedef enum
 {
     TK_IDENT,   // 标识符，变量名，函数名等
     TK_PUNCT,   // 操作符
     TK_KEYWORD, // 关键字
     TK_NUM,     // 数字
+    TK_STR,     // 字符串字面量
     TK_EOF,     // 终止符
 } TokenKind;    // 终结符
 
@@ -36,6 +46,10 @@ struct Token
     char *Loc; // 在字符串中的位置
 
     int Len; // 长度
+
+    // 字符串字面量
+    Type *type;
+    char *Str;
 };
 
 // 错误信息提示函数
@@ -56,7 +70,6 @@ Token *tokenize(char *Input);
 //
 
 typedef struct Node Node;
-typedef struct Type Type;
 
 // 语法分析 (类型系统)
 
@@ -155,6 +168,10 @@ struct Obj
 
     // 函数 或 全局变量
     bool isFunction;
+
+    // 全局变量
+    char *InitData;
+
     // 函数
     Node *body;    // 函数体
     Obj *Params;   // 形参

@@ -10,6 +10,7 @@ add_executable( rvcc
   tokenize.c
   type.c
   parse.c
+  string.c
   codegen.c
 )
 

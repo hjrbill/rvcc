@@ -133,6 +133,25 @@ static bool isKeyword(Token *T)
     return false;
 }
 
+// 读取字符串字面量
+static Token *readStringLiteral(char *Start)
+{
+    char *P = Start + 1;
+    while (*P != '"')
+    {
+        if (*P == '\n' || *P == '\0') // 遇到换行符和'\0'则报错
+        {
+            errorAt(Start, "unclosed string literal");
+        }
+        P++;
+    }
+
+    Token *Tok = newToken(TK_STR, Start, P + 1);
+    Tok->type = arrayOf(TyChar, P - Start);
+    Tok->Str = strndup(Start + 1, P - Start - 1); // 拷贝双引号间的内容，结果是\0的 char *类型
+    return Tok;
+}
+
 // 将为关键字的 TK_IDENT 节点转换为 TK_KEYWORD 节点
 static void convertKeywords(Token *Tok)
 {
@@ -158,13 +177,22 @@ Token *tokenize(char *P)
             ++P;
             continue;
         }
-
-        int length = isPunct(P);
-        if (length) // 是标点符号
+        else if (isdigit(*P))
         {
-            Cur->next = newToken(TK_PUNCT, P, P + length);
+            char *start = P;
+            const int num = strtoul(P, &P, 10);
+
+            Cur->next = newToken(TK_NUM, start, P);
             Cur = Cur->next;
-            P += length;
+            Cur->Val = num;
+            continue;
+        }
+        else if (*P == '"') // 解析字符串字面量
+        {
+            Cur->next = readStringLiteral(P);
+            Cur = Cur->next;
+            P += Cur->Len;
+            continue;
         }
         else if (isIdentHead(*P)) // 解析标记符或关键字
         {
@@ -175,15 +203,15 @@ Token *tokenize(char *P)
             } while (isIdentBody(*P));
             Cur->next = newToken(TK_IDENT, start, P);
             Cur = Cur->next;
+            continue;
         }
-        else if (isdigit(*P))
-        {
-            char *start = P;
-            const int num = strtoul(P, &P, 10);
 
-            Cur->next = newToken(TK_NUM, start, P);
+        int length = isPunct(P);
+        if (length) // 是标点符号
+        {
+            Cur->next = newToken(TK_PUNCT, P, P + length);
             Cur = Cur->next;
-            Cur->Val = num;
+            P += length;
         }
         else
         {
