@@ -14,14 +14,24 @@
 //
 
 //
+// 字符串处理
+//
+
+char *format(char *Fmt, ...);
+
+//
 // 词法分析
 //
+
+typedef struct Type Type;
+
 typedef enum
 {
     TK_IDENT,   // 标识符，变量名，函数名等
     TK_PUNCT,   // 操作符
     TK_KEYWORD, // 关键字
     TK_NUM,     // 数字
+    TK_STR,     // 字符串字面量
     TK_EOF,     // 终止符
 } TokenKind;    // 终结符
 
@@ -36,6 +46,10 @@ struct Token
     char *Loc; // 在字符串中的位置
 
     int Len; // 长度
+
+    // 字符串字面量
+    Type *type;
+    char *Str;
 };
 
 // 错误信息提示函数
@@ -56,7 +70,6 @@ Token *tokenize(char *Input);
 //
 
 typedef struct Node Node;
-typedef struct Type Type;
 
 // 语法分析 (类型系统)
 
@@ -64,6 +77,7 @@ typedef struct Type Type;
 typedef enum
 {
     TY_INT,   // int 整型
+    TY_CHAR,  // char 字符类型
     TY_PTR,   // 指针
     TY_FUNC,  // 函数
     TY_ARRAY, // 数组
@@ -76,7 +90,7 @@ struct Type
 
     Type *base;
     Token *name; // 其类型对应的名称，如：变量名、函数名
-    
+
     Type *next; // 下一类型
 
     // 函数类型
@@ -87,8 +101,10 @@ struct Type
     int ArrayLen; // 数组大小
 };
 
-// 声明一个全局变量，定义在 type.c 中。
+// 声明全局变量，定义在 type.c 中
 extern Type *TyInt;
+extern Type *TyChar;
+
 // 判断是否是整形
 bool isInteger(Type *Ty);
 // 构建一个指针类型，并指向基类
@@ -137,15 +153,34 @@ typedef enum
     ND_NUM // 整形
 } NodeKind;
 
+// 变量或函数
 typedef struct Obj Obj;
 struct Obj
 {
-    Obj *next; // 下一个对象
+    Obj *next;  // 下一个对象
+    char *name; // 对象名称
+    Type *type; // 对象类型
 
-    Type *type; // 变量类型
-    char *name; // 对象名
+    // 是 局部或全局 变量
+    bool isLocal;
+    // 变量
     int offset; // 相对于 fp 的偏移量
+
+    // 函数 或 全局变量
+    bool isFunction;
+
+    // 全局变量
+    char *InitData;
+
+    // 函数
+    Node *body;    // 函数体
+    Obj *Params;   // 形参
+    Obj *locals;   // 函数的局部变量
+    int stackSize; // 栈深度
 };
+
+// 语法解析入口函数
+Obj *parse(Token *Tok);
 
 struct Node
 {
@@ -174,27 +209,9 @@ struct Node
     int Val;    // ND_NUM 类型的值
 };
 
-typedef struct Func Func;
-struct Func
-{
-    Func *next; // 下一个函数
-
-    char *name; // 函数名
-
-    Node *body; // 函数体
-
-    Obj *Params; // 形参
-    Obj *locals; // 函数的局部变量
-
-    int stackSize; // 栈深度
-};
-
-// 语法解析入口函数
-Func *parse(Token *Tok);
-
 //
 // 语义分析与代码生成
 //
 
 // 代码生成入口函数
-void codegen(Func *node);
+void codegen(Obj *node);

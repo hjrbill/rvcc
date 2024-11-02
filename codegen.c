@@ -5,7 +5,7 @@ static int Depth;
 // 用于存储函数参数的寄存器
 static char *ArgReg[] = {"a0", "a1", "a2", "a3", "a4", "a5"};
 // 当前的函数
-static Func *CurrentFn;
+static Obj *CurrentFn;
 
 static void genExpr(Node *Nd);
 
@@ -40,17 +40,34 @@ static void pop(char *Reg)
 static void load(Type *Ty)
 {
     if (Ty->kind == TY_ARRAY)
+    {
         return;
+    }
+
     printf("  # 读取 a0 中存放的地址，得到的值存入 a0\n");
-    printf("  ld a0, 0(a0)\n");
+    if (Ty->size == 1)
+    {
+        printf("  lb a0, 0(a0)\n");
+    }
+    else
+    {
+        printf("  ld a0, 0(a0)\n");
+    }
 }
 
 // 将栈顶值 (为一个地址) 存入 a0
-static void store(void)
+static void store(Type *Ty)
 {
     pop("a1");
     printf("  # 将 a0 的值，写入到 a1 中存放的地址\n");
-    printf("  sd a0, 0(a1)\n");
+    if (Ty->size == 1)
+    {
+        printf("  sb a0, 0(a1)\n"); // sb 代表 "store byte"，通常用于存储 1 个字节的数据
+    }
+    else
+    {
+        printf("  sd a0, 0(a1)\n"); // sd 代表 "store doubleword"，通常用于存储 4 字节或 8 字节的数据
+    }
 };
 
 // 计算给定节点的绝对地址，如果报错，说明节点不在内存中
@@ -59,10 +76,17 @@ static void getAddr(Node *node)
     switch (node->kind)
     {
     case ND_VAR:
-        printf("  # 获取变量%s，栈内地址为%d(fp)\n", node->Var->name,
-               node->Var->offset);
-        // 取出变量相对于 fp 的偏移量
-        printf("  addi a0, fp, %d\n", node->Var->offset);
+        if (node->Var->isLocal)
+        {
+            printf("  # 获取局部变量%s的栈内地址为%d(fp)\n", node->Var->name,
+                   node->Var->offset);
+            printf("  addi a0, fp, %d\n", node->Var->offset); // 取出变量相对于 fp 的偏移量
+        }
+        else
+        {
+            printf("  # 获取全局变量%s的栈内地址\n", node->Var->name);
+            printf("  la a0, %s\n", node->Var->name);
+        }
         return;
     case ND_DEREF:
         genExpr(node->LHS);
@@ -100,7 +124,7 @@ static void genExpr(Node *node)
         getAddr(node->LHS); // 左边为被赋值的地址
         push();
         genExpr(node->RHS); // 右边为赋予的值
-        store();
+        store(node->type);
         return;
     case ND_NUM: // 是整型
         printf("  # 将%d加载到 a0 中\n", node->Val);
@@ -284,10 +308,15 @@ static int alignTo(int N, int Align)
     return (N + Align - 1) / Align * Align;
 }
 
-static void assignLVarOffsets(Func *fn)
+static void assignLVarOffsets(Obj *fn)
 { // 为每个函数计算其变量所用的栈空间
-    for (Func *Fn = fn; Fn; Fn = Fn->next)
+    for (Obj *Fn = fn; Fn; Fn = Fn->next)
     {
+        if (!Fn->isFunction)
+        {
+            continue; // 不是函数，跳过
+        }
+
         int offset = 0;
         for (Obj *var = Fn->locals; var; var = var->next)
         {
@@ -298,14 +327,61 @@ static void assignLVarOffsets(Func *fn)
     }
 }
 
-void codegen(Func *fn)
+// 生成数据段（数据段是存储程序数据的内存区域，包括全局变量、静态变量、常量和程序中分配的其他数据结构。）
+static void emitData(Obj *Prog)
 {
-    assignLVarOffsets(fn);
-    // 为每个函数单独生成代码
-    for (Func *Fn = fn; Fn; Fn = Fn->next)
+    for (Obj *Var = Prog; Var; Var = Var->next)
     {
+        if (Var->isFunction)
+        {
+            continue;
+        }
+
+        printf("  # 数据段标签\n");
+        printf("  .data\n"); // 指示汇编器接下来的代码属于数据段
+        if (Var->InitData)
+        {
+            printf("%s:\n", Var->name);
+            for (int i = 0; i < Var->type->size; i++)
+            {
+                char ch = Var->InitData[i];
+                if (isprint(ch)) // 判断是否为可打印字符
+                {
+                    printf("  # 字符：%c\n", ch);
+                    printf("  .byte %d\n", ch);
+                }
+                else
+                {
+                    printf("  .byte %d\n", ch);
+                }
+            }
+        }
+        else
+        {
+            printf("  # 全局段%s\n", Var->name);
+            printf("  .globl %s\n", Var->name); // 指示汇编器 Var->name 指定的符号是全局的，可以在其他地方被访问
+            printf("  # 全局变量%s\n", Var->name);
+            printf("%s:\n", Var->name);
+            printf("  # 全局变量零填充%d位\n", Var->type->size);
+            printf("  .zero %d\n", Var->type->size); // 为全局变量 Var->Name 分配 Var->type->Size 字节的内存空间，并将其初始化为零
+        }
+    }
+}
+
+// 生成文本段（数据段）
+void emitText(Obj *Prog)
+{
+    for (Obj *Fn = Prog; Fn; Fn = Fn->next)
+    {
+        if (!Fn->isFunction)
+        {
+            continue;
+        }
+
         printf("\n  # 定义全局%s段\n", Fn->name);
-        printf("  .globl %s\n", Fn->name);
+        printf("  .globl %s\n", Fn->name); // 指示汇编器 Fn->name 指定的符号是全局的，可以在其他地方被访问
+        printf("  # 文本段标签\n");
+        printf("  .text\n"); // 指示汇编器接下来的代码属于程序的文本段
         printf("# =====%s段开始===============\n", Fn->name);
         printf("# %s段标签\n", Fn->name);
         printf("%s:\n", Fn->name);
@@ -340,7 +416,14 @@ void codegen(Func *fn)
         for (Obj *Var = Fn->Params; Var; Var = Var->next)
         {
             printf("  # 将%s寄存器的值存入%s的栈地址\n", ArgReg[cnt], Var->name);
-            printf("  sd %s, %d(fp)\n", ArgReg[cnt++], Var->offset);
+            if (Var->type->size == 1)
+            {
+                printf("  sb %s, %d(fp)\n", ArgReg[cnt++], Var->offset);
+            }
+            else
+            {
+                printf("  sd %s, %d(fp)\n", ArgReg[cnt++], Var->offset);
+            }
         }
 
         // 生成语句链表的代码
@@ -364,4 +447,14 @@ void codegen(Func *fn)
         printf("  # 返回 a0 值给系统调用\n");
         printf("  ret\n");
     }
+}
+
+void codegen(Obj *Prog)
+{
+    // 计算局部变量的偏移量
+    assignLVarOffsets(Prog);
+    // 生成数据段
+    emitData(Prog);
+    // 生成文本段
+    emitText(Prog);
 }

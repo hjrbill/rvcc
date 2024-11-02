@@ -1,10 +1,20 @@
 #include "rvcc.h"
 
-Obj *Locals; // 存储当前解析的函数的局部变量
+// 存储当前解析种的变量
+Obj *Locals;  // 局部变量 (局部函数/嵌套函数)
+Obj *Globals; // 全局变量（全局函数）
 
 static Obj *FindVarByName(Token *Tok)
 {
     for (Obj *p = Locals; p; p = p->next)
+    {
+        if (strlen(p->name) == Tok->Len && !strncmp(p->name, Tok->Loc, Tok->Len))
+        {
+            return p;
+        }
+    }
+
+    for (Obj *p = Globals; p; p = p->next)
     {
         if (strlen(p->name) == Tok->Len && !strncmp(p->name, Tok->Loc, Tok->Len))
         {
@@ -32,17 +42,63 @@ static int getNum(Token *Tok)
     return Tok->Val;
 }
 
+// 判断是否为类型名
+static bool isTypename(Token *Tok)
+{
+    return equal(Tok, "char") || equal(Tok, "int");
+}
+
 static Obj *newVar(char *name, Type *type)
 {
     Obj *var = calloc(1, sizeof(Obj));
     var->name = name;
     var->type = type;
 
+    return var;
+}
+
+static Obj *newLocalVar(char *name, Type *type)
+{
+    Obj *var = newVar(name, type);
+    var->isLocal = true;
+
     // 将新变量插入到 Locals 的头部
     var->next = Locals;
     Locals = var;
 
     return var;
+}
+
+static Obj *newGlobalVar(char *name, Type *type)
+{
+    Obj *var = newVar(name, type);
+
+    // 将新变量插入到 Globals 的头部
+    var->next = Globals;
+    Globals = var;
+
+    return var;
+}
+
+// 生成唯一名称
+static char *newUniqueName(void)
+{
+    static int Id = 0;
+    return format(".L..%d", Id++); // 创建唯一的标签（变量名）
+}
+
+// 生成匿名全局变量
+static Obj *newAnonGVar(Type *Ty)
+{
+    return newGlobalVar(newUniqueName(), Ty);
+}
+
+// 生成字符串字面量
+static Obj *newStringLiteral(char *Str, Type *Ty)
+{
+    Obj *Var = newAnonGVar(Ty);
+    Var->InitData = Str;
+    return Var;
 }
 
 static void createParamVars(Type *Param)
@@ -52,13 +108,14 @@ static void createParamVars(Type *Param)
         // 先将最底部的加入 Locals 中，之后逐个加入到顶部，保持顺序不变
         createParamVars(Param->next);
         // 添加到 Locals 中
-        newVar(getIdent(Param->name), Param);
+        newLocalVar(getIdent(Param->name), Param);
     }
 }
 
-// program = functionDefinition*
+// program = (functionDefinition | globalVariable)*
 // functionDefinition = declspec declarator "{" compoundStmt*
-// declspec = "int"
+// globalVariable = declspec ( declarator ",")* ";"
+// declspec = "char" | "int"
 // declarator = "*"* ident typeSuffix
 // typeSuffix = "(" funcParams | "[" num "]" typeSuffix | ε
 // funcParams = (param ("," param)*)? ")"
@@ -80,9 +137,10 @@ static void createParamVars(Type *Param)
 // mul = unary ("*" unary | "/" unary)*
 // unary = ("+" | "-" | "*" | "&") unary | postfix
 // postfix = primary ("[" expr "]")*
-// primary = "(" expr ")" | "sizeof" unary | ident | Funcall | num
+// primary = "(" expr ")" | "sizeof" unary | ident funcArgs? | str | num
 // Funcall = ident "(" (assign ("," assign)*)? ")"
-static Func *function(Token **Rest, Token *Tok);
+static Token *function(Token *Tok, Type *declspec);
+static Token *globalVariable(Token *Tok, Type *declspec);
 static Type *declspec(Token **Rest, Token *Tok);
 static Type *declarator(Token **Rest, Token *Tok, Type *Ty);
 static Type *typeSuffix(Token **Rest, Token *Tok, Type *Ty);
@@ -205,33 +263,94 @@ static Node *newVarNode(Token *Tok, Obj *var)
     return node;
 }
 
-// functionDefinition = declspec declarator "{" compoundStmt*
-static Func *function(Token **Rest, Token *Tok)
+// 区分 函数还是全局变量
+static bool isFunction(Token *Tok)
 {
-    Type *Ty = declspec(&Tok, Tok);
-    Ty = declarator(&Tok, Tok, Ty);
+    if (equal(Tok, ";"))
+    {
+        return false;
+    }
+
+    // 虚设变量，用于调用 declarator 以确定是否为函数
+    Type Dummy = {};
+    Type *Ty = declarator(&Tok, Tok, &Dummy);
+    return Ty->kind == TY_FUNC;
+}
+
+// 语法解析入口函数
+// program = (functionDefinition | globalVariable)*
+Obj *parse(Token *Tok)
+{
+    Globals = NULL;
+
+    while (Tok->kind != TK_EOF)
+    {
+        Type *baseType = declspec(&Tok, Tok);
+
+        if (isFunction(Tok))
+        {
+            Tok = function(Tok, baseType);
+        }
+        else
+        {
+            Tok = globalVariable(Tok, baseType);
+        }
+    }
+    return Globals;
+}
+
+// globalVariable = declspec ( declarator ",")* ";"
+static Token *globalVariable(Token *Tok, Type *declspec)
+{
+    bool isFirst = true;
+
+    while (!consume(&Tok, Tok, ";"))
+    {
+        if (!isFirst)
+        {
+            Tok = skip(Tok, ",");
+        }
+        else
+        {
+            isFirst = false;
+        }
+
+        Type *Ty = declarator(&Tok, Tok, declspec);
+        Obj *obj = newGlobalVar(getIdent(Ty->name), Ty);
+    }
+    return Tok;
+}
+
+// functionDefinition = declspec declarator "{" compoundStmt*
+static Token *function(Token *Tok, Type *declspec)
+{
+    Type *Ty = declarator(&Tok, Tok, declspec);
+    Obj *fn = newGlobalVar(getIdent(Ty->name), Ty); // 全局函数是一种特殊的全局变量
+    fn->isFunction = true;
 
     // 清空上一个函数的 Locals
     Locals = NULL;
-
-    Func *fn = calloc(1, sizeof(Func));
-    // 函数名
-    fn->name = getIdent(Ty->name);
     // 函数参数
     createParamVars(Ty->Params);
     fn->Params = Locals;
 
     Tok = skip(Tok, "{");
-    fn->body = compoundStmt(Rest, Tok);
+    // 函数体存储语句的 AST，Locals 存储变量
+    fn->body = compoundStmt(&Tok, Tok);
     fn->locals = Locals;
 
-    return fn;
+    return Tok;
 }
 
-// declspec = "int"
+// declspec = "char" | "int"
 static Type *declspec(Token **Rest, Token *Tok)
 {
-    if (equal(Tok, "int"))
+    if (equal(Tok, "char"))
+    {
+        *Rest = Tok->next;
+        return TyChar;
+    }
+    else if (equal(Tok, "int"))
     {
         *Rest = Tok->next;
         return TyInt;
@@ -315,7 +434,7 @@ static Node *compoundStmt(Token **Rest, Token *T)
 
     while (!equal(T, "}"))
     {
-        if (equal(T, "int")) // declaration
+        if (isTypename(T)) // declaration
         {
             Cur->next = declaration(&T, T);
         }
@@ -355,7 +474,7 @@ static Node *declaration(Token **Rest, Token *Tok)
         }
 
         Type *Ty = declarator(&Tok, Tok, baseType);
-        Obj *Var = newVar(getIdent(Ty->name), Ty);
+        Obj *Var = newLocalVar(getIdent(Ty->name), Ty);
 
         // 如果不存在"="则为变量声明，不需要生成节点，已经存储在 Locals 中了
         if (!equal(Tok, "="))
@@ -633,8 +752,7 @@ static Node *postfix(Token **Rest, Token *Tok)
     return node;
 }
 
-// primary = "(" expr ")" | "sizeof" unary | ident | Funcall | num
-// args = "(" ")"
+// primary = "(" expr ")" | "sizeof" unary | ident funcArgs? | str | num
 // @param Rest 用于向上传递仍需要解析的 Token 的首部
 // @param Tok 当前正在解析的 Token
 static Node *primary(Token **Rest, Token *Tok)
@@ -666,6 +784,12 @@ static Node *primary(Token **Rest, Token *Tok)
         Node *node = newVarNode(Tok, var);
         *Rest = Tok->next;
         return node;
+    }
+    else if (Tok->kind == TK_STR)
+    {
+        Obj *Var = newStringLiteral(Tok->Str, Tok->type);
+        *Rest = Tok->next;
+        return newVarNode(Tok, Var);
     }
     else if (Tok->kind == TK_NUM)
     {
@@ -709,18 +833,4 @@ static Node *Funcall(Token **Rest, Token *Tok)
 
     *Rest = Tok->next;
     return node;
-}
-
-// 语法解析入口函数
-// program = functionDefinition*
-Func *parse(Token *Tok)
-{
-    Func Head = {};
-    Func *Cur = &Head;
-
-    while (Tok->kind != TK_EOF)
-    {
-        Cur = Cur->next = function(&Tok, Tok);
-    }
-    return Head.next;
 }
