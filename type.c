@@ -1,10 +1,11 @@
 #include "rvcc.h"
 
-Type *TyInt = &(Type){TY_INT, 8}; // 为 int 类型创建 Type 常（变）量
+Type *TyInt = &(Type){TY_INT, 8}; // 为 int 类型创建 Type "常量"
+Type *TyChar = &(Type){TY_CHAR, 1}; // 为 char 类型创建 Type "常量"
 
 bool isInteger(Type *Ty)
 {
-    return Ty->kind == TY_INT;
+    return Ty->kind == TY_INT|| Ty->kind == TY_CHAR;
 }
 
 // 创建一个基类为 base 的指针类型

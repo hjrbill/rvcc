@@ -40,17 +40,34 @@ static void pop(char *Reg)
 static void load(Type *Ty)
 {
     if (Ty->kind == TY_ARRAY)
+    {
         return;
+    }
+
     printf("  # 读取 a0 中存放的地址，得到的值存入 a0\n");
-    printf("  ld a0, 0(a0)\n");
+    if (Ty->size == 1)
+    {
+        printf("  lb a0, 0(a0)\n");
+    }
+    else
+    {
+        printf("  ld a0, 0(a0)\n");
+    }
 }
 
 // 将栈顶值 (为一个地址) 存入 a0
-static void store(void)
+static void store(Type *Ty)
 {
     pop("a1");
     printf("  # 将 a0 的值，写入到 a1 中存放的地址\n");
-    printf("  sd a0, 0(a1)\n");
+    if (Ty->size == 1)
+    {
+        printf("  sb a0, 0(a1)\n"); // sb 代表 "store byte"，通常用于存储 1 个字节的数据
+    }
+    else
+    {
+        printf("  sd a0, 0(a1)\n"); // sd 代表 "store doubleword"，通常用于存储 4 字节或 8 字节的数据
+    }
 };
 
 // 计算给定节点的绝对地址，如果报错，说明节点不在内存中
@@ -107,7 +124,7 @@ static void genExpr(Node *node)
         getAddr(node->LHS); // 左边为被赋值的地址
         push();
         genExpr(node->RHS); // 右边为赋予的值
-        store();
+        store(node->type);
         return;
     case ND_NUM: // 是整型
         printf("  # 将%d加载到 a0 中\n", node->Val);
@@ -344,7 +361,7 @@ void emitText(Obj *Prog)
         printf("\n  # 定义全局%s段\n", Fn->name);
         printf("  .globl %s\n", Fn->name); // 指示汇编器 Fn->name 指定的符号是全局的，可以在其他地方被访问
         printf("  # 文本段标签\n");
-        printf("  .text\n");               // 指示汇编器接下来的代码属于程序的文本段
+        printf("  .text\n"); // 指示汇编器接下来的代码属于程序的文本段
         printf("# =====%s段开始===============\n", Fn->name);
         printf("# %s段标签\n", Fn->name);
         printf("%s:\n", Fn->name);
@@ -379,7 +396,14 @@ void emitText(Obj *Prog)
         for (Obj *Var = Fn->Params; Var; Var = Var->next)
         {
             printf("  # 将%s寄存器的值存入%s的栈地址\n", ArgReg[cnt], Var->name);
-            printf("  sd %s, %d(fp)\n", ArgReg[cnt++], Var->offset);
+            if (Var->type->size == 1)
+            {
+                printf("  sb %s, %d(fp)\n", ArgReg[cnt++], Var->offset);
+            }
+            else
+            {
+                printf("  sd %s, %d(fp)\n", ArgReg[cnt++], Var->offset);
+            }
         }
 
         // 生成语句链表的代码

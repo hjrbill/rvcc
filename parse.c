@@ -85,10 +85,16 @@ static void createParamVars(Type *Param)
     }
 }
 
+// 判断是否为类型名
+static bool isTypename(Token *Tok)
+{
+    return equal(Tok, "char") || equal(Tok, "int");
+}
+
 // program = (functionDefinition | globalVariable)*
 // functionDefinition = declspec declarator "{" compoundStmt*
 // globalVariable = declspec ( declarator ",")* ";"
-// declspec = "int"
+// declspec = "char" | "int"
 // declarator = "*"* ident typeSuffix
 // typeSuffix = "(" funcParams | "[" num "]" typeSuffix | ε
 // funcParams = (param ("," param)*)? ")"
@@ -264,7 +270,8 @@ Obj *parse(Token *Tok)
         {
             Tok = function(Tok, baseType);
         }
-        else{
+        else
+        {
             Tok = globalVariable(Tok, baseType);
         }
     }
@@ -276,7 +283,7 @@ static Token *globalVariable(Token *Tok, Type *declspec)
 {
     bool isFirst = true;
 
-    while (!consume(&Tok,Tok, ";"))
+    while (!consume(&Tok, Tok, ";"))
     {
         if (!isFirst)
         {
@@ -314,10 +321,15 @@ static Token *function(Token *Tok, Type *declspec)
     return Tok;
 }
 
-// declspec = "int"
+// declspec = "char" | "int"
 static Type *declspec(Token **Rest, Token *Tok)
 {
-    if (equal(Tok, "int"))
+    if (equal(Tok, "char"))
+    {
+        *Rest = Tok->next;
+        return TyChar;
+    }
+    else if (equal(Tok, "int"))
     {
         *Rest = Tok->next;
         return TyInt;
@@ -401,7 +413,7 @@ static Node *compoundStmt(Token **Rest, Token *T)
 
     while (!equal(T, "}"))
     {
-        if (equal(T, "int")) // declaration
+        if (isTypename(T)) // declaration
         {
             Cur->next = declaration(&T, T);
         }

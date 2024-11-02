@@ -64,6 +64,7 @@ typedef struct Type Type;
 typedef enum
 {
     TY_INT,   // int 整型
+    TY_CHAR,  // char 字符类型
     TY_PTR,   // 指针
     TY_FUNC,  // 函数
     TY_ARRAY, // 数组
@@ -87,8 +88,10 @@ struct Type
     int ArrayLen; // 数组大小
 };
 
-// 声明一个全局变量，定义在 type.c 中。
+// 声明全局变量，定义在 type.c 中
 extern Type *TyInt;
+extern Type *TyChar;
+
 // 判断是否是整形
 bool isInteger(Type *Ty);
 // 构建一个指针类型，并指向基类
