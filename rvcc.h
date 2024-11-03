@@ -1,7 +1,8 @@
-// 使用 POSIX.1 标准 (引入需要的 strndup 函数)
+// 使用 POSIX.1 标准 (引入 strndup 函数)
 #define _POSIX_C_SOURCE 200809L
 
 #include <assert.h>
+#include <errno.h>
 #include <ctype.h>
 #include <stdarg.h>
 #include <stdbool.h>
@@ -63,7 +64,7 @@ Token *skip(Token *Tok, char *Str);
 bool consume(Token **Rest, Token *Tok, char *Str);
 
 // 词法分析入口函数
-Token *tokenize(char *Input);
+Token *tokenizeFile(char *Path);
 
 //
 // 语法分析

@@ -12,9 +12,9 @@ int main(int Argc, char **Argv)
   }
 
   // 生成终结符流
-  Token *T = tokenize(Argv[1]);
+  Token *Tok = tokenizeFile(Argv[1]);
 
-  Obj *fn = parse(T);
+  Obj *fn = parse(Tok);
 
   codegen(fn);
 
