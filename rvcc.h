@@ -216,4 +216,4 @@ struct Node
 //
 
 // 代码生成入口函数
-void codegen(Obj *node);
+void codegen(Obj *Prog, FILE *Out);
