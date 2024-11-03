@@ -1,11 +1,11 @@
 #include "rvcc.h"
 
-Type *TyInt = &(Type){TY_INT, 8}; // 为 int 类型创建 Type "常量"
+Type *TyInt = &(Type){TY_INT, 8};   // 为 int 类型创建 Type "常量"
 Type *TyChar = &(Type){TY_CHAR, 1}; // 为 char 类型创建 Type "常量"
 
 bool isInteger(Type *Ty)
 {
-    return Ty->kind == TY_INT|| Ty->kind == TY_CHAR;
+    return Ty->kind == TY_INT || Ty->kind == TY_CHAR;
 }
 
 // 创建一个基类为 base 的指针类型
@@ -123,6 +123,23 @@ void addType(Node *node)
             errorTok(node->Tok, "invalid pointer dereference");
         }
         node->type = node->LHS->type->base;
+        return;
+        // 节点类型为 最后的表达式语句的类型
+    case ND_STMT_EXPR:
+        if (node->Body)
+        {
+            Node *stmt = node->Body;
+            while (stmt->next)
+            {
+                stmt = stmt->next;
+            }
+            if (stmt->kind == ND_EXPR_STMT)
+            {
+                node->type = stmt->LHS->type;
+                return;
+            }
+        }
+        errorTok(node->Tok, "statement expression returning void is not supported");
         return;
     default:
         break;

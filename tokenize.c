@@ -1,6 +1,7 @@
 #include "rvcc.h"
 
-static char *Input; // 读入的内容
+static char *Input;           // 读入的内容
+static char *CurrentFilename; // 输入的文件名
 
 // 输出错误信息
 void error(char *Fmt, ...)
@@ -259,14 +260,34 @@ static void convertKeywords(Token *Tok)
     }
 }
 
-Token *tokenize(char *P)
+// 终结符解析
+Token *tokenize(char *Filename, char *P)
 {
+    CurrentFilename = Filename;
     Input = P;
     Token Head = {}; // 空头指针，避免处理边界问题
     Token *Cur = &Head;
 
     while (*P)
     {
+
+        if (startsWith(P, "//")) // 跳过行注释
+        {
+            P += 2;
+            while (*P != '\n')
+                P++;
+            continue;
+        }
+        else if (startsWith(P, "/*")) // 跳过块注释
+        {
+            // 查找第一个"*/"的位置
+            char *Q = strstr(P + 2, "*/");
+            if (!Q)
+                errorAt(P, "unclosed block comment");
+            P = Q + 2;
+            continue;
+        }
+
         if (isspace(*P)) // 跳过不可视的空白字符
         {
             ++P;
@@ -318,4 +339,60 @@ Token *tokenize(char *P)
 
     convertKeywords(Cur);
     return Head.next;
+}
+
+// 读取指定文件
+static char *readFile(char *Path)
+{
+    FILE *FP;
+    if (strcmp(Path, "-") == 0)
+    {
+        // 如果文件名是"-"，那么就从输入中读取
+        FP = stdin;
+    }
+    else
+    {
+        FP = fopen(Path, "r");
+        if (!FP)
+            // strerror 以字符串的形式输出错误代码，errno 为系统最后一次的错误代码
+            error("cannot open %s: %s", Path, strerror(errno));
+    }
+
+    // 要返回的字符串
+    char *Buf;
+    size_t BufLen;
+    FILE *Out = open_memstream(&Buf, &BufLen);
+
+    while (true)
+    {
+        char Buf2[4096];
+        // fread 从文件流中读取数据到数组中
+        int N = fread(Buf2, 1, sizeof(Buf2), FP);
+        if (N == 0)
+            break;
+        fwrite(Buf2, 1, N, Out);
+    }
+
+    // 如果来源是文件，关闭它
+    if (FP != stdin)
+    {
+        fclose(FP);
+    }
+
+    // 刷新流的输出缓冲区，确保内容都被输出到流中
+    fflush(Out);
+    // 确保最后一行以'\n'结尾
+    if (BufLen == 0 || Buf[BufLen - 1] != '\n')
+        // 将字符输出到流中
+        fputc('\n', Out);
+    fputc('\0', Out);
+    fclose(Out);
+
+    return Buf;
+}
+
+// 对文件进行词法分析
+Token *tokenizeFile(char *Path)
+{
+    return tokenize(Path, readFile(Path));
 }
