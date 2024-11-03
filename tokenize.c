@@ -270,6 +270,24 @@ Token *tokenize(char *Filename, char *P)
 
     while (*P)
     {
+
+        if (startsWith(P, "//")) // 跳过行注释
+        {
+            P += 2;
+            while (*P != '\n')
+                P++;
+            continue;
+        }
+        else if (startsWith(P, "/*")) // 跳过块注释
+        {
+            // 查找第一个"*/"的位置
+            char *Q = strstr(P + 2, "*/");
+            if (!Q)
+                errorAt(P, "unclosed block comment");
+            P = Q + 2;
+            continue;
+        }
+
         if (isspace(*P)) // 跳过不可视的空白字符
         {
             ++P;
