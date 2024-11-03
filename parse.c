@@ -137,7 +137,12 @@ static void createParamVars(Type *Param)
 // mul = unary ("*" unary | "/" unary)*
 // unary = ("+" | "-" | "*" | "&") unary | postfix
 // postfix = primary ("[" expr "]")*
-// primary = "(" expr ")" | "sizeof" unary | ident funcArgs? | str | num
+// primary = "(" "{" stmt+ "}" ")"
+//         | "(" expr ")"
+//         | "sizeof" unary
+//         | ident funcArgs?
+//         | str
+//         | num
 // Funcall = ident "(" (assign ("," assign)*)? ")"
 static Token *function(Token *Tok, Type *declspec);
 static Token *globalVariable(Token *Tok, Type *declspec);
@@ -752,13 +757,28 @@ static Node *postfix(Token **Rest, Token *Tok)
     return node;
 }
 
-// primary = "(" expr ")" | "sizeof" unary | ident funcArgs? | str | num
+// primary = "(" "{" stmt+ "}" ")" [GNU]
+//         | "(" expr ")"
+//         | "sizeof" unary
+//         | ident funcArgs?
+//         | str
+//         | num
 // @param Rest 用于向上传递仍需要解析的 Token 的首部
 // @param Tok 当前正在解析的 Token
 static Node *primary(Token **Rest, Token *Tok)
 {
     if (equal(Tok, "("))
     {
+        // "(" "{" stmt+ "}" ")" [GNU]
+        if (equal(Tok->next, "{"))
+        {
+            Node *node = newNode(ND_STMT_EXPR, Tok);
+            node->Body = compoundStmt(&Tok, Tok->next->next)->Body;
+            *Rest = skip(Tok, ")");
+            return node;
+        }
+
+        // "(" expr ")"
         Node *node = expr(&Tok, Tok->next);
         *Rest = skip(Tok, ")");
         return node;

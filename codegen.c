@@ -7,7 +7,8 @@ static char *ArgReg[] = {"a0", "a1", "a2", "a3", "a4", "a5"};
 // 当前的函数
 static Obj *CurrentFn;
 
-static void genExpr(Node *Nd);
+static void genExpr(Node *node);
+static void genStmt(Node *node);
 
 static int Count(void)
 {
@@ -131,6 +132,12 @@ static void genExpr(Node *node)
         // li 为 addi 别名指令，加载一个立即数到寄存器中
         printf("  li a0, %d\n", node->Val);
         return;
+    case ND_STMT_EXPR:
+    {
+        for (Node *Nd = node->Body; Nd; Nd = Nd->next)
+            genStmt(Nd);
+        return;
+    }
     case ND_FUNCALL:
     {
         int argsCnt = 0;

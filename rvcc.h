@@ -133,6 +133,7 @@ typedef enum
     ND_IF,        // if 语句
     ND_FOR,       // for | while 语句 (while 是 for 的一种特殊情况)
     ND_EXPR_STMT, // 表达式语句
+    ND_STMT_EXPR, // 语句表达式
 
     ND_ASSIGN, // 赋值
     ND_NEG,    // 负号
@@ -199,7 +200,7 @@ struct Node
     Node *Init; // 初始化语句
     Node *Inc;  // 递增语句
 
-    Node *Body; // 代码块
+    Node *Body; // 代码块 or 表达式语句
 
     char *FuncName; // 函数名
     Node *Args;     // 函数参数
