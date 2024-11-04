@@ -24,3 +24,6 @@ build/
 # IDE相关文件夹
 .cache/
 .vscode/
+
+# 测试生成的可执行文件
+/test/*.exe
