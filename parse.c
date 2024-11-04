@@ -1,28 +1,28 @@
 #include "rvcc.h"
 
-// 存储当前解析种的变量
+// 变量域
+typedef struct VarScope VarScope;
+struct VarScope
+{
+    VarScope *next;
+    char *name;
+    Obj *Var;
+};
+
+// 块域
+typedef struct scope scope;
+struct scope
+{
+    scope *next;
+    VarScope *Vars;
+};
+
+// 存储当前解析中的变量
 Obj *Locals;  // 局部变量 (局部函数/嵌套函数)
 Obj *Globals; // 全局变量（全局函数）
 
-static Obj *FindVarByName(Token *Tok)
-{
-    for (Obj *p = Locals; p; p = p->next)
-    {
-        if (strlen(p->name) == Tok->Len && !strncmp(p->name, Tok->Loc, Tok->Len))
-        {
-            return p;
-        }
-    }
-
-    for (Obj *p = Globals; p; p = p->next)
-    {
-        if (strlen(p->name) == Tok->Len && !strncmp(p->name, Tok->Loc, Tok->Len))
-        {
-            return p;
-        }
-    }
-    return NULL;
-}
+// 域链表
+static scope *Scp = &(scope){};
 
 // 获取变量名
 static char *getIdent(Token *Tok)
@@ -48,13 +48,112 @@ static bool isTypename(Token *Tok)
     return equal(Tok, "char") || equal(Tok, "int");
 }
 
+// program = (functionDefinition | globalVariable)*
+// functionDefinition = declspec declarator "{" compoundStmt*
+// globalVariable = declspec ( declarator ",")* ";"
+// declspec = "char" | "int"
+// declarator = "*"* ident typeSuffix
+// typeSuffix = "(" funcParams | "[" num "]" typeSuffix | ε
+// funcParams = (param ("," param)*)? ")"
+// param = declspec declarator
+// compoundStmt = (declaration | stmt)* "}"
+// declaration = declspec (declarator ("=" expr)? ("," declarator ("=" expr)?)*)? ";"
+// stmt = "return" expr ";"
+//        | "if" "(" expr ")" stmt ("else" stmt)?
+//        | "for" "(" exprStmt expr? ";" expr? ")" stmt
+//        | "while" "(" expr ")" stmt
+//        | "{" compoundStmt
+//        | exprStmt
+// exprStmt = expr ";"
+// expr = assign
+// assign = equality ("=" assign)?
+// equality = relational ("==" relational | "!=" relational)*
+// relational = add ("<" add | "<=" add | ">" add | ">=" add)*
+// add = mul ("+" mul | "-" mul)*
+// mul = unary ("*" unary | "/" unary)*
+// unary = ("+" | "-" | "*" | "&") unary | postfix
+// postfix = primary ("[" expr "]")*
+// primary = "(" "{" stmt+ "}" ")"
+//         | "(" expr ")"
+//         | "sizeof" unary
+//         | ident funcArgs?
+//         | str
+//         | num
+// Funcall = ident "(" (assign ("," assign)*)? ")"
+static Token *function(Token *Tok, Type *declspec);
+static Token *globalVariable(Token *Tok, Type *declspec);
+static Type *declspec(Token **Rest, Token *Tok);
+static Type *declarator(Token **Rest, Token *Tok, Type *Ty);
+static Type *typeSuffix(Token **Rest, Token *Tok, Type *Ty);
+static Type *funcParams(Token **Rest, Token *Tok, Type *Ty);
+static Node *compoundStmt(Token **Rest, Token *Tok);
+static Node *declaration(Token **Rest, Token *Tok);
+static Node *stmt(Token **Rest, Token *Tok);
+static Node *exprStmt(Token **Rest, Token *Tok);
+static Node *expr(Token **Rest, Token *Tok);
+static Node *assign(Token **Rest, Token *Tok);
+static Node *equality(Token **Rest, Token *Tok);
+static Node *relational(Token **Rest, Token *Tok);
+static Node *add(Token **Rest, Token *Tok);
+static Node *mul(Token **Rest, Token *Tok);
+static Node *unary(Token **Rest, Token *Tok);
+static Node *postfix(Token **Rest, Token *Tok);
+static Node *primary(Token **Rest, Token *Tok);
+static Node *Funcall(Token **Rest, Token *Tok);
+
+// 进入域
+static void enterScope(void)
+{
+    scope *S = calloc(1, sizeof(scope));
+    // 模拟栈，栈顶对应最近的域
+    S->next = Scp;
+    Scp = S;
+}
+
+// 结束当前域
+static void leaveScope(void)
+{
+    Scp = Scp->next;
+}
+
+static Obj *FindVarByName(Token *Tok)
+{
+    // 从最深层的域向上寻找
+    for (scope *ScoPtr = Scp; ScoPtr; ScoPtr = ScoPtr->next)
+    {
+        for (VarScope *varPtr = ScoPtr->Vars; varPtr; varPtr = varPtr->next)
+        {
+            if (equal(Tok, varPtr->name))
+            {
+                return varPtr->Var;
+            }
+        }
+    }
+    return NULL;
+}
+
+// 将变量存入当前的域中
+static VarScope *pushScope(char *Name, Obj *Var)
+{
+    VarScope *S = calloc(1, sizeof(VarScope));
+    S->name = Name;
+    S->Var = Var;
+
+    S->next = Scp->Vars;
+    Scp->Vars = S;
+
+    return S;
+}
+
 static Obj *newVar(char *name, Type *type)
 {
-    Obj *var = calloc(1, sizeof(Obj));
-    var->name = name;
-    var->type = type;
+    Obj *Var = calloc(1, sizeof(Obj));
+    Var->name = name;
+    Var->type = type;
 
-    return var;
+    pushScope(name, Var);
+
+    return Var;
 }
 
 static Obj *newLocalVar(char *name, Type *type)
@@ -111,59 +210,6 @@ static void createParamVars(Type *Param)
         newLocalVar(getIdent(Param->name), Param);
     }
 }
-
-// program = (functionDefinition | globalVariable)*
-// functionDefinition = declspec declarator "{" compoundStmt*
-// globalVariable = declspec ( declarator ",")* ";"
-// declspec = "char" | "int"
-// declarator = "*"* ident typeSuffix
-// typeSuffix = "(" funcParams | "[" num "]" typeSuffix | ε
-// funcParams = (param ("," param)*)? ")"
-// param = declspec declarator
-// compoundStmt = (declaration | stmt)* "}"
-// declaration = declspec (declarator ("=" expr)? ("," declarator ("=" expr)?)*)? ";"
-// stmt = "return" expr ";"
-//        | "if" "(" expr ")" stmt ("else" stmt)?
-//        | "for" "(" exprStmt expr? ";" expr? ")" stmt
-//        | "while" "(" expr ")" stmt
-//        | "{" compoundStmt
-//        | exprStmt
-// exprStmt = expr ";"
-// expr = assign
-// assign = equality ("=" assign)?
-// equality = relational ("==" relational | "!=" relational)*
-// relational = add ("<" add | "<=" add | ">" add | ">=" add)*
-// add = mul ("+" mul | "-" mul)*
-// mul = unary ("*" unary | "/" unary)*
-// unary = ("+" | "-" | "*" | "&") unary | postfix
-// postfix = primary ("[" expr "]")*
-// primary = "(" "{" stmt+ "}" ")"
-//         | "(" expr ")"
-//         | "sizeof" unary
-//         | ident funcArgs?
-//         | str
-//         | num
-// Funcall = ident "(" (assign ("," assign)*)? ")"
-static Token *function(Token *Tok, Type *declspec);
-static Token *globalVariable(Token *Tok, Type *declspec);
-static Type *declspec(Token **Rest, Token *Tok);
-static Type *declarator(Token **Rest, Token *Tok, Type *Ty);
-static Type *typeSuffix(Token **Rest, Token *Tok, Type *Ty);
-static Type *funcParams(Token **Rest, Token *Tok, Type *Ty);
-static Node *compoundStmt(Token **Rest, Token *Tok);
-static Node *declaration(Token **Rest, Token *Tok);
-static Node *stmt(Token **Rest, Token *Tok);
-static Node *exprStmt(Token **Rest, Token *Tok);
-static Node *expr(Token **Rest, Token *Tok);
-static Node *assign(Token **Rest, Token *Tok);
-static Node *equality(Token **Rest, Token *Tok);
-static Node *relational(Token **Rest, Token *Tok);
-static Node *add(Token **Rest, Token *Tok);
-static Node *mul(Token **Rest, Token *Tok);
-static Node *unary(Token **Rest, Token *Tok);
-static Node *postfix(Token **Rest, Token *Tok);
-static Node *primary(Token **Rest, Token *Tok);
-static Node *Funcall(Token **Rest, Token *Tok);
 
 static Node *newNode(NodeKind kind, Token *Tok)
 {
@@ -335,6 +381,10 @@ static Token *function(Token *Tok, Type *declspec)
 
     // 清空上一个函数的 Locals
     Locals = NULL;
+
+    // 进入新的域
+    enterScope();
+
     // 函数参数
     createParamVars(Ty->Params);
     fn->Params = Locals;
@@ -343,6 +393,9 @@ static Token *function(Token *Tok, Type *declspec)
     // 函数体存储语句的 AST，Locals 存储变量
     fn->body = compoundStmt(&Tok, Tok);
     fn->locals = Locals;
+
+    // 结束当前域
+    leaveScope();
 
     return Tok;
 }
@@ -437,6 +490,9 @@ static Node *compoundStmt(Token **Rest, Token *T)
     Node Head = {};
     Node *Cur = &Head;
 
+    // 进入新的域
+    enterScope();
+
     while (!equal(T, "}"))
     {
         if (isTypename(T)) // declaration
@@ -451,6 +507,9 @@ static Node *compoundStmt(Token **Rest, Token *T)
         addType(Cur); // 为节点添加类型信息
     }
     *Rest = skip(T, "}");
+
+    // 结束当前域
+    leaveScope();
 
     Node *node = newNode(ND_BLOCK, T);
     node->Body = Head.next; // 代码块节点的 body 存储了该代码块的语句
