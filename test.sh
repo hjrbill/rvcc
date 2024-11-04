@@ -391,5 +391,10 @@ assert 2 'int main() { /* return 1; */
 assert 2 'int main() { // return 1;
              return 2; }'
 
+# [36] 处理代码块域
+assert 2 'int main() { int x=2; { int x=3; } return x; }'
+assert 2 'int main() { int x=2; { int x=3; } { int y=4; return x; }}'
+assert 3 'int main() { int x=2; { x=3; } return x; }'
+
 # 如果运行正常未提前退出，程序将显示PASS
 echo PASS
