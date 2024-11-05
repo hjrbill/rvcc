@@ -80,7 +80,6 @@ static FILE *openFile(char *Path)
   {
     error("cannot open output file: %s: %s", Path, strerror(errno));
   }
-    
   return Out;
 }
 
@@ -91,12 +90,15 @@ int main(int Argc, char **Argv)
 
   // 解析文件，生成终结符流
   Token *Tok = tokenizeFile(InputPath);
-  
+
   // 解析终结符流
   Obj *Prog = parse(Tok);
 
   // 生成代码
   FILE *Out = openFile(OptO);
+  // .file 文件编号 文件名，设置文件的编号和名称，供后续 .loc 指令引用。
+  fprintf(Out, ".file 1 \"%s\"\n", InputPath);
+
   codegen(Prog, Out);
 
   return 0;

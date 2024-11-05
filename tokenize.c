@@ -297,6 +297,7 @@ static void addLineNumbers(Token *Tok)
 {
     char *P = Input;
     int cnt = 1;
+
     do
     {
         if (P == Tok->Loc)
@@ -326,7 +327,9 @@ Token *tokenize(char *Filename, char *P)
         {
             P += 2;
             while (*P != '\n')
+            {
                 P++;
+            }
             continue;
         }
         else if (startsWith(P, "/*")) // 跳过块注释
@@ -334,7 +337,9 @@ Token *tokenize(char *Filename, char *P)
             // 查找第一个"*/"的位置
             char *Q = strstr(P + 2, "*/");
             if (!Q)
+            {
                 errorAt(P, "unclosed block comment");
+            }
             P = Q + 2;
             continue;
         }

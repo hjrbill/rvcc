@@ -114,6 +114,9 @@ static void getAddr(Node *node)
 
 static void genExpr(Node *node)
 {
+    // .loc 文件编号 行号，关联具体的汇编代码和源码中的行号，便于调试器将汇编代码行与源码行对应起来。
+    writeln("  .loc 1 %d", node->Tok->lineNo);
+
     switch (node->kind)
     {
     case ND_VAR: // 是变量
@@ -234,6 +237,9 @@ static void genExpr(Node *node)
 
 static void genStmt(Node *node)
 {
+    // .loc 文件编号 行号，关联具体的汇编代码和源码中的行号，便于调试器将汇编代码行与源码行对应起来。
+    writeln("  .loc 1 %d", node->Tok->lineNo);
+
     switch (node->kind)
     {
     case ND_EXPR_STMT:
