@@ -141,6 +141,10 @@ void addType(Node *node)
         }
         errorTok(node->Tok, "statement expression returning void is not supported");
         return;
+        // 将节点类型设为 右部的类型
+    case ND_COMMA:
+        node->type = node->RHS->type;
+        return;
     default:
         break;
     }

@@ -106,6 +106,10 @@ static void getAddr(Node *node)
     case ND_DEREF:
         genExpr(node->LHS);
         return;
+    case ND_COMMA:
+        genExpr(node->LHS);
+        getAddr(node->RHS);
+        return;
     default:
         errorTok(node->Tok, "not an lvalue");
         return;
@@ -137,6 +141,11 @@ static void genExpr(Node *node)
         writeln("  # 对 a0 值进行取反\n");
         // neg a0, a0 是 sub a0, x0, a0 的别名，即 a0=0-a0
         writeln("  neg a0, a0\n");
+        return;
+        // 逗号
+    case ND_COMMA:
+        genExpr(node->LHS);
+        genExpr(node->RHS);
         return;
     case ND_ASSIGN:         // 是赋值
         getAddr(node->LHS); // 左边为被赋值的地址
