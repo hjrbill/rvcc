@@ -51,6 +51,8 @@ struct Token
     // 字符串字面量
     Type *type;
     char *Str;
+
+    int lineNo; // 行号
 };
 
 // 错误信息提示函数

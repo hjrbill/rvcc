@@ -16,27 +16,59 @@ void error(char *Fmt, ...)
 }
 
 // 输出错误出现的位置
-void verrorAt(char *Cur, char *Fmt, va_list VA)
+void verrorAt(int lineNo, char *Cur, char *Fmt, va_list VA)
 {
-    // 原文
-    fprintf(stderr, "%s\n", Input);
+    // 查找包含 loc 的行
+    char *Line = Cur;
 
-    // 定位错误位置
-    int Pos = Cur - Input;
-    // 输出错误信息
+    // Line 递减到当前行的最开始的位置
+    // Line<Input, 判断是否读取到文件最开始的位置
+    // Line[-1] != '\n'，Line 字符串前一个字符是否为换行符（上一行末尾）
+    while (Input < Line && Line[-1] != '\n')
+    {
+        Line--;
+    }
+
+    // End 递增到行尾的换行符
+    char *End = Cur;
+    while (*End != '\n')
+    {
+        End++;
+    }
+
+    // 输出 文件名：错误行
+    // Indent 记录输出了多少个字符
+    int Indent = fprintf(stderr, "%s:%d: ", CurrentFilename, lineNo);
+    // 输出 Line 的行内所有字符（不含换行符）
+    fprintf(stderr, "%.*s\n", (int)(End - Line), Line);
+
+    // 计算错误信息位置，在当前行内的偏移量 + 前面输出了多少个字符
+    int Pos = Cur - Line + Indent;
+
+    // 将字符串补齐为 Pos 位，因为是空字符串，所以填充 Pos 个空格。
     fprintf(stderr, "%*s", Pos, "");
     fprintf(stderr, "^ ");
     vfprintf(stderr, Fmt, VA);
     fprintf(stderr, "\n");
+
     va_end(VA);
 }
 
 // 字符解析错误
 void errorAt(char *Loc, char *Fmt, ...)
 {
+    int lineNo = 1;
+    for (char *P = Input; P < Loc; P++)
+    {
+        if (*P == '\n')
+        {
+            lineNo++;
+        }
+    }
+
     va_list VA;
     va_start(VA, Fmt);
-    verrorAt(Loc, Fmt, VA);
+    verrorAt(lineNo, Loc, Fmt, VA);
     exit(1);
 }
 
@@ -45,7 +77,7 @@ void errorTok(Token *T, char *Fmt, ...)
 {
     va_list VA;
     va_start(VA, Fmt);
-    verrorAt(T->Loc, Fmt, VA);
+    verrorAt(T->lineNo, T->Loc, Fmt, VA);
     exit(1);
 }
 
@@ -260,6 +292,25 @@ static void convertKeywords(Token *Tok)
     }
 }
 
+// 为所有 Token 添加行号
+static void addLineNumbers(Token *Tok)
+{
+    char *P = Input;
+    int cnt = 1;
+    do
+    {
+        if (P == Tok->Loc)
+        {
+            Tok->lineNo = cnt;
+            Tok = Tok->next;
+        }
+        if (*P == '\n')
+        {
+            cnt++;
+        }
+    } while (*P++);
+}
+
 // 终结符解析
 Token *tokenize(char *Filename, char *P)
 {
@@ -336,6 +387,8 @@ Token *tokenize(char *Filename, char *P)
     }
 
     Cur->next = newToken(TK_EOF, P, P); // 添加终止节点
+
+    addLineNumbers(Head.next); // 为所有 Token 添加行号
 
     convertKeywords(Cur);
     return Head.next;
