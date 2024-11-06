@@ -103,6 +103,12 @@ static void getAddr(Node *node)
             writeln("  la a0, %s\n", node->Var->name);
         }
         return;
+    case ND_MEMBER:
+        getAddr(node->LHS);
+        // li 指令用于加载立即数到寄存器。
+        writeln("li t0, %d", node->Mem->offset);
+        writeln("add a0, a0, t0");
+        return;
     case ND_DEREF:
         genExpr(node->LHS);
         return;
@@ -123,7 +129,8 @@ static void genExpr(Node *node)
 
     switch (node->kind)
     {
-    case ND_VAR: // 是变量
+    case ND_VAR: // 是变量 或 结构体
+    case ND_MEMBER:
         // 计算出变量的地址，然后存入 a0
         getAddr(node);
         // 访问 a0 地址中存储的数据，存入到 a0 当中
