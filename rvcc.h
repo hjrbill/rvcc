@@ -73,17 +73,19 @@ Token *tokenizeFile(char *Path);
 //
 
 typedef struct Node Node;
+typedef struct Member Member;
 
 // 语法分析 (类型系统)
 
 // 类型种类
 typedef enum
 {
-    TY_INT,   // int 整型
-    TY_CHAR,  // char 字符类型
-    TY_PTR,   // 指针
-    TY_FUNC,  // 函数
-    TY_ARRAY, // 数组
+    TY_INT,    // int 整型
+    TY_CHAR,   // char 字符类型
+    TY_PTR,    // 指针
+    TY_FUNC,   // 函数
+    TY_ARRAY,  // 数组
+    TY_STRUCT, // 结构体
 } TypeKind;
 
 struct Type
@@ -95,6 +97,9 @@ struct Type
     Token *name; // 其类型对应的名称，如：变量名、函数名
 
     Type *next; // 下一类型
+
+    // 结构体
+    Member *Mems;
 
     // 函数类型
     Type *ReturnTy; // 函数返回的类型
@@ -131,8 +136,7 @@ typedef enum
     ND_BLOCK,   // { ... }，代码块
     ND_FUNCALL, // 函数调用
 
-    ND_VAR, // 变量
-
+    ND_VAR,       // 变量
     ND_IF,        // if 语句
     ND_FOR,       // for | while 语句 (while 是 for 的一种特殊情况)
     ND_EXPR_STMT, // 表达式语句
@@ -141,9 +145,10 @@ typedef enum
     ND_ASSIGN, // 赋值
     ND_NEG,    // 负号
 
-    ND_ADDR,  // 取地址 &
-    ND_DEREF, // 解引用 *
-    ND_COMMA, // , 逗号
+    ND_ADDR,   // 取地址 &
+    ND_DEREF,  // 解引用 *
+    ND_MEMBER, // . 结构体成员访问
+    ND_COMMA,  // , 逗号
 
     ND_EQ, // ==
     ND_NE, // !=
@@ -197,6 +202,9 @@ struct Node
     Node *LHS;
     Node *RHS;
 
+    // 结构体
+    Member *Mem; // 成员访问
+
     // if 语句或 for 语句
     Node *Cond; // 条件语句
     Node *Then; // true 走向的语句
@@ -212,6 +220,15 @@ struct Node
     Obj *Var;   // ND_VAR 类型的变量名
     Type *type; // 节点中的数据的类型
     int Val;    // ND_NUM 类型的值
+};
+
+// 结构体成员
+struct Member
+{
+    Member *next; // 下一成员
+    Type *type;   // 类型
+    Token *name;  // 名称
+    int offset;   // 偏移量
 };
 
 //

@@ -91,7 +91,10 @@ void addType(Node *node)
         }
         node->type = node->LHS->type;
         return;
-
+    // 将节点类型设为其指向成员的类型
+    case ND_MEMBER:
+        node->type = node->Mem->type;
+        return;
     // 将特殊处理比较操作符节点，其类型设为 int
     case ND_EQ:
     case ND_NE:
