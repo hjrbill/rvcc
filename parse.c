@@ -65,7 +65,7 @@ static bool isTypename(Token *Tok)
 //        | "{" compoundStmt
 //        | exprStmt
 // exprStmt = expr ";"
-// expr = assign
+// expr = assign ("," expr)?
 // assign = equality ("=" assign)?
 // equality = relational ("==" relational | "!=" relational)*
 // relational = add ("<" add | "<=" add | ">" add | ">=" add)*
@@ -215,6 +215,7 @@ static Node *newNode(NodeKind kind, Token *Tok)
 {
     Node *node = calloc(1, sizeof(Node));
     node->kind = kind;
+    node->Tok = Tok;
     return node;
 }
 
@@ -649,12 +650,18 @@ static Node *exprStmt(Token **Rest, Token *Tok)
     return node;
 }
 
-// expr = assign
+// expr = assign ("," expr)?
 // @param Rest 用于向上传递仍需要解析的 Token 的首部
 // @param Tok 当前正在解析的 Token
 static Node *expr(Token **Rest, Token *Tok)
 {
-    return assign(Rest, Tok);
+    Node *node = assign(&Tok, Tok);
+    if (equal(Tok, ","))
+    {
+        node = newBinary(ND_COMMA, Tok, node, expr(&Tok, Tok->next));
+    }
+    *Rest = Tok;
+    return node;
 }
 
 // assign = equality ("=" assign)?

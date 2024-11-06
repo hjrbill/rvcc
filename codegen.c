@@ -106,6 +106,10 @@ static void getAddr(Node *node)
     case ND_DEREF:
         genExpr(node->LHS);
         return;
+    case ND_COMMA:
+        genExpr(node->LHS);
+        getAddr(node->RHS);
+        return;
     default:
         errorTok(node->Tok, "not an lvalue");
         return;
@@ -114,6 +118,9 @@ static void getAddr(Node *node)
 
 static void genExpr(Node *node)
 {
+    // .loc 文件编号 行号，关联具体的汇编代码和源码中的行号，便于调试器将汇编代码行与源码行对应起来。
+    writeln("  .loc 1 %d", node->Tok->lineNo);
+
     switch (node->kind)
     {
     case ND_VAR: // 是变量
@@ -134,6 +141,11 @@ static void genExpr(Node *node)
         writeln("  # 对 a0 值进行取反\n");
         // neg a0, a0 是 sub a0, x0, a0 的别名，即 a0=0-a0
         writeln("  neg a0, a0\n");
+        return;
+        // 逗号
+    case ND_COMMA:
+        genExpr(node->LHS);
+        genExpr(node->RHS);
         return;
     case ND_ASSIGN:         // 是赋值
         getAddr(node->LHS); // 左边为被赋值的地址
@@ -234,6 +246,9 @@ static void genExpr(Node *node)
 
 static void genStmt(Node *node)
 {
+    // .loc 文件编号 行号，关联具体的汇编代码和源码中的行号，便于调试器将汇编代码行与源码行对应起来。
+    writeln("  .loc 1 %d", node->Tok->lineNo);
+
     switch (node->kind)
     {
     case ND_EXPR_STMT:

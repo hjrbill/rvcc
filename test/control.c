@@ -24,6 +24,11 @@ int main()
     // [14] 支持 while 语句
     ASSERT(10, ({ int i=0; while(i<10) i=i+1; i; }));
 
+    // [40] 支持 , 运算符
+    ASSERT(3, (1, 2, 3));
+    ASSERT(5, ({ int i=2, j=3; (i=5,j)=6; i; }));
+    ASSERT(6, ({ int i=2, j=3; (i=5,j)=6; j; }));
+
     printf("OK\n");
     return 0;
 }
