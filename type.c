@@ -1,7 +1,16 @@
 #include "rvcc.h"
 
-Type *TyInt = &(Type){TY_INT, 8};   // 为 int 类型创建 Type "常量"
-Type *TyChar = &(Type){TY_CHAR, 1}; // 为 char 类型创建 Type "常量"
+Type *TyInt = &(Type){TY_INT, 8, 8};   // 为 int 类型创建 Type "常量"
+Type *TyChar = &(Type){TY_CHAR, 1, 1}; // 为 char 类型创建 Type "常量"
+
+static Type *newType(TypeKind kind, int size, int align)
+{
+    Type *type = calloc(1, sizeof(Type));
+    type->kind = kind;
+    type->size = size;
+    type->align = align;
+    return type;
+}
 
 bool isInteger(Type *Ty)
 {
@@ -11,10 +20,8 @@ bool isInteger(Type *Ty)
 // 创建一个基类为 base 的指针类型
 Type *pointerTo(Type *base)
 {
-    Type *ptr = calloc(1, sizeof(Type));
-    ptr->kind = TY_PTR;
+    Type *ptr = newType(TY_PTR, 8, 8);
     ptr->base = base;
-    ptr->size = 8;
     return ptr;
 }
 
@@ -30,10 +37,7 @@ Type *funcType(Type *ReturnTy)
 // 创建一个数组类型
 Type *arrayOf(Type *Base, int Len)
 {
-    Type *Ty = calloc(1, sizeof(Type));
-    Ty->kind = TY_ARRAY;
-
-    Ty->size = Base->size * Len;
+    Type *Ty = newType(TY_ARRAY, Base->size * Len, Base->align);
     Ty->base = Base;
     Ty->ArrayLen = Len;
     return Ty;

@@ -346,7 +346,7 @@ static void genStmt(Node *node)
 }
 
 // 将 N 对齐到 Align 的整数倍
-static int alignTo(int N, int Align)
+int alignTo(int N, int Align)
 {
     return (N + Align - 1) / Align * Align;
 }
