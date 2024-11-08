@@ -261,18 +261,18 @@ static Node *newAddBinary(Token *Tok, Node *LHS, Node *RHS)
     addType(LHS);
     addType(RHS);
 
-    // 拒绝处理指针 + 指针
-    if (LHS->type->base && RHS->type->base)
-    {
-        errorTok(Tok, "invalid operands");
-    }
-
     // num + num
     if (isInteger(LHS->type) && isInteger(RHS->type))
     {
         return newBinary(ND_ADD, Tok, LHS, RHS);
     }
 
+    // 拒绝处理指针 + 指针
+    if (LHS->type->base && RHS->type->base)
+    {
+        errorTok(Tok, "invalid operands");
+    }
+  
     // num+ptr
     if (isInteger(LHS->type) && RHS->type->base)
     {
@@ -292,18 +292,18 @@ static Node *newSubBinary(Token *Tok, Node *LHS, Node *RHS)
     addType(LHS);
     addType(RHS);
 
+    // num - num
+    if (isInteger(LHS->type) && isInteger(RHS->type))
+    {
+        return newBinary(ND_SUB, Tok, LHS, RHS);
+    }
+
     // 指针 - 指针
     if (LHS->type->base && RHS->type->base)
     {
         Node *node = newBinary(ND_SUB, Tok, LHS, RHS);
         node->type = TyInt;
-        return newBinary(ND_DIV, Tok, node, newNumNode(Tok, LHS->type->size));
-    }
-
-    // num - num
-    if (isInteger(LHS->type) && isInteger(RHS->type))
-    {
-        return newBinary(ND_SUB, Tok, LHS, RHS);
+        return newBinary(ND_DIV, Tok, node, newNumNode(Tok, LHS->type->base->size));
     }
 
     // ptr - num

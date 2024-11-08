@@ -352,7 +352,8 @@ int alignTo(int N, int Align)
 }
 
 static void assignLVarOffsets(Obj *fn)
-{ // 为每个函数计算其变量所用的栈空间
+{ 
+    // 为每个函数计算其变量所用的栈空间
     for (Obj *Fn = fn; Fn; Fn = Fn->next)
     {
         if (!Fn->isFunction)
@@ -364,6 +365,8 @@ static void assignLVarOffsets(Obj *fn)
         for (Obj *var = Fn->locals; var; var = var->next)
         {
             offset += var->type->size;
+            // 对齐变量
+            offset = alignTo(offset, var->type->align);
             var->offset = -offset;
         }
         Fn->stackSize = alignTo(offset, 16); // 将栈对齐到 16 字节（内存对齐），优化处理器访问
@@ -496,7 +499,7 @@ void codegen(Obj *Prog, FILE *Out)
 {
     // 设置目标文件的文件流指针
     OutputFile = Out;
-    // 计算局部变量的偏移量
+    // 计算变量的偏移量
     assignLVarOffsets(Prog);
     // 生成数据段
     emitData(Prog);
