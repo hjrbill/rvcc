@@ -91,7 +91,8 @@ typedef enum
 struct Type
 {
     TypeKind kind;
-    int size; // 类型的大小（sizeof 返回的值）
+    int size;  // 类型的大小（sizeof 返回的值）
+    int align; // 对齐因子
 
     Type *base;
     Token *name; // 其类型对应的名称，如：变量名、函数名
@@ -236,4 +237,5 @@ struct Member
 //
 
 // 代码生成入口函数
+int alignTo(int N, int Align);
 void codegen(Obj *Prog, FILE *Out);
