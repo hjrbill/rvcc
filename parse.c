@@ -9,12 +9,24 @@ struct VarScope
     Obj *Var;
 };
 
+// 结构体标签域
+typedef struct TagScope TagScope;
+struct TagScope
+{
+    TagScope *next;
+    char *name;
+    Type *type;
+};
+
 // 块域
 typedef struct scope scope;
 struct scope
 {
     scope *next;
+
+    // 有两种域，变量域（包括 func）和结构体标签域
     VarScope *Vars;
+    TagScope *Tags;
 };
 
 // 存储当前解析中的变量
@@ -134,6 +146,7 @@ static void leaveScope(void)
     Scp = Scp->next;
 }
 
+// 通过 Token 查找变量
 static Obj *FindVarByName(Token *Tok)
 {
     // 从最深层的域向上寻找
@@ -150,8 +163,25 @@ static Obj *FindVarByName(Token *Tok)
     return NULL;
 }
 
+// 通过 Token 查找结构体标签
+static Type *FindTag(Token *Tok)
+{
+    // 从最深层的域向上寻找
+    for (scope *ScoPtr = Scp; ScoPtr; ScoPtr = ScoPtr->next)
+    {
+        for (TagScope *tagPtr = ScoPtr->Tags; tagPtr; tagPtr = tagPtr->next)
+        {
+            if (equal(Tok, tagPtr->name))
+            {
+                return tagPtr->type;
+            }
+        }
+    }
+    return NULL;
+}
+
 // 将变量存入当前的域中
-static VarScope *pushScope(char *Name, Obj *Var)
+static VarScope *pushVarScope(char *Name, Obj *Var)
 {
     VarScope *S = calloc(1, sizeof(VarScope));
     S->name = Name;
@@ -163,13 +193,24 @@ static VarScope *pushScope(char *Name, Obj *Var)
     return S;
 }
 
+// 将结构体标签存入当前的域中
+static void *pushTagScope(Token *NameTok, Type *Type)
+{
+    TagScope *S = calloc(1, sizeof(TagScope));
+    S->name = strndup(NameTok->Loc, NameTok->Len);
+    S->type = Type;
+
+    S->next = Scp->Tags;
+    Scp->Tags = S;
+}
+
 static Obj *newVar(char *name, Type *type)
 {
     Obj *Var = calloc(1, sizeof(Obj));
     Var->name = name;
     Var->type = type;
 
-    pushScope(name, Var);
+    pushVarScope(name, Var);
 
     return Var;
 }
@@ -272,7 +313,7 @@ static Node *newAddBinary(Token *Tok, Node *LHS, Node *RHS)
     {
         errorTok(Tok, "invalid operands");
     }
-  
+
     // num+ptr
     if (isInteger(LHS->type) && RHS->type->base)
     {
@@ -882,12 +923,30 @@ static void structMembers(Token **Rest, Token *Tok, Type *type)
 // structDecl = "{" structMembers
 static Type *structDecl(Token **Rest, Token *Tok)
 {
-    Tok = skip(Tok, "{");
+    // 尝试读取结构体标签
+    Token *Tag = NULL;
+    if (Tok->kind == TK_IDENT)
+    {
+        Tag = Tok;
+        Tok = Tok->next;
+    }
 
-    // 构造一个结构体
+    // 构造已定义标签的结构体
+    if (Tag && !equal(Tok, "{"))
+    {
+        Type *type = FindTag(Tag);
+        if (!type)
+        {
+            errorTok(Tag, "unknown struct type");
+        }
+        *Rest = Tok;
+        return type;
+    }
+
+    // 定义结构体标签或构造未定义结构体标签的结构体
     Type *type = calloc(1, sizeof(Type));
     type->kind = TY_STRUCT;
-    structMembers(Rest, Tok, type);
+    structMembers(Rest, Tok->next, type);
     type->align = 1;
 
     // 计算结构体内成员的偏移量
@@ -904,6 +963,13 @@ static Type *structDecl(Token **Rest, Token *Tok)
         }
     }
     type->size = alignTo(offset, type->align);
+
+    // 如果是非匿名结构体，注册标签
+    if (Tag)
+    {
+        pushTagScope(Tag, type);
+    }
+
     return type;
 }
 
