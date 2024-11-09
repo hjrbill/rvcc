@@ -100,7 +100,7 @@ static bool isTypename(Token *Tok)
 // unary = ("+" | "-" | "*" | "&") unary | postfix
 // structMembers = (declspec declarator (","  declarator)* ";")*
 // structDecl = "{" structMembers
-// postfix = primary ("[" expr "]" | "." ident)*
+// postfix = primary ("[" expr "]" | "." ident)* | "->" ident)*
 // primary = "(" "{" stmt+ "}" ")"
 //         | "(" expr ")"
 //         | "sizeof" unary
@@ -973,7 +973,7 @@ static Type *structDecl(Token **Rest, Token *Tok)
     return type;
 }
 
-// postfix = primary ("[" expr "]" | "." ident)*
+// postfix = primary ("[" expr "]" | "." ident)* | "->" ident)*
 static Node *postfix(Token **Rest, Token *Tok)
 {
     Node *node = primary(&Tok, Tok);
@@ -992,6 +992,13 @@ static Node *postfix(Token **Rest, Token *Tok)
         else if (equal(Tok, ".")) // "." ident
         {
             node = structRef(node, Tok->next);
+            Tok = Tok->next->next;
+            continue;
+        }
+        else if (equal(Tok, "->")) // "->" ident
+        {
+            node = newUnary(ND_DEREF, Tok, node);
+            node=structRef(node, Tok->next);
             Tok = Tok->next->next;
             continue;
         }
