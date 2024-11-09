@@ -125,11 +125,18 @@ static bool startsWith(char *Str, char *SubStr)
 
 static int isPunct(char *P)
 {
-    if (startsWith(P, "==") || startsWith(P, "!=") || startsWith(P, "<=") || startsWith(P, ">="))
+    // 多字节操作符列表
+    static char *Kw[] = {"==", "!=", "<=", ">=", "->"};
+
+    for (int i = 0; i < sizeof(Kw) / sizeof(*Kw); ++i)
     {
-        return 2;
+        if (startsWith(P, Kw[i]))
+        {
+            return strlen(Kw[i]);
+        }
     }
-    else if ispunct (*P)
+
+    if ispunct (*P)
     {
         return 1;
     }

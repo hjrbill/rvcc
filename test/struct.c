@@ -27,6 +27,16 @@ int main()
     ASSERT(16, ({ struct {char a; int b;} x; sizeof(x); }));
     ASSERT(16, ({ struct {int a; char b;} x; sizeof(x); }));
 
+    // [44] 支持结构体标签
+    ASSERT(16, ({ struct t {int a; int b;} x; struct t y; sizeof(y); }));
+    ASSERT(16, ({ struct t {int a; int b;}; struct t y; sizeof(y); }));
+    ASSERT(2, ({ struct t {char a[2];}; { struct t {char a[4];}; } struct t y; sizeof(y); }));
+    ASSERT(3, ({ struct t {int x;}; int t=1; struct t y; y.x=2; t+y.x; }));
+
+    // [45] 支持->操作符
+    ASSERT(3, ({ struct t {char a;} x; struct t *y = &x; x.a=3; y->a; }));
+    ASSERT(3, ({ struct t {char a;} x; struct t *y = &x; y->a=3; x.a; }));
+
     printf("OK\n");
     return 0;
 }
