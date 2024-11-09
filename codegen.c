@@ -52,15 +52,15 @@ static void pop(char *Reg)
 }
 
 // 加载 a0 指向的值
-static void load(Type *Ty)
+static void load(Type *type)
 {
-    if (Ty->kind == TY_ARRAY)
+    if (type->kind == TY_ARRAY || type->kind == TY_STRUCT || type->kind == TY_UNION)
     {
         return;
     }
 
     writeln("  # 读取 a0 中存放的地址，得到的值存入 a0\n");
-    if (Ty->size == 1)
+    if (type->size == 1)
     {
         writeln("  lb a0, 0(a0)\n");
     }
@@ -74,6 +74,25 @@ static void load(Type *Ty)
 static void store(Type *Ty)
 {
     pop("a1");
+
+    if (Ty->kind == TY_STRUCT || Ty->kind == TY_UNION)
+    {
+        writeln("  # 对%s进行赋值", Ty->kind == TY_STRUCT ? "结构体" : "联合体");
+
+        for (int i = 0; i < Ty->size; i++)
+        {
+            writeln("li t0, %d", i);
+            writeln("add t0, a0, t0");
+            writeln("lb t1, 0(t0)");
+
+            writeln("li t0, %d", i);
+            writeln("add t0, a1, t0");
+            writeln("sb t1, 0(t0)");
+        }
+
+        return;
+    }
+
     writeln("  # 将 a0 的值，写入到 a1 中存放的地址\n");
     if (Ty->size == 1)
     {
@@ -352,7 +371,7 @@ int alignTo(int N, int Align)
 }
 
 static void assignLVarOffsets(Obj *fn)
-{ 
+{
     // 为每个函数计算其变量所用的栈空间
     for (Obj *Fn = fn; Fn; Fn = Fn->next)
     {
