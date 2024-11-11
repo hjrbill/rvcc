@@ -62,24 +62,31 @@ static void load(Type *type)
     writeln("  # 读取 a0 中存放的地址，得到的值存入 a0\n");
     if (type->size == 1)
     {
+        // lb rd, rs1, 从内存中加载一个 8 位 (1 字节) 的操作数 rs1 到寄存器 rd 中
         writeln("  lb a0, 0(a0)\n");
+    }
+    else if (type->size == 4)
+    {
+        // lw rd, rs1, 从内存中加载一个 32 位（4 字节）的操作数 rs1 到寄存器 rd 中
+        writeln("  lw a0,0(a0)\n");
     }
     else
     {
+        // ld rd, rs1, 从内存中加载一个 64 位（8 字节）的操作数 rs1 到寄存器 rd 中
         writeln("  ld a0, 0(a0)\n");
     }
 }
 
 // 将栈顶值 (为一个地址) 存入 a0
-static void store(Type *Ty)
+static void store(Type *type)
 {
     pop("a1");
 
-    if (Ty->kind == TY_STRUCT || Ty->kind == TY_UNION)
+    if (type->kind == TY_STRUCT || type->kind == TY_UNION)
     {
-        writeln("  # 对%s进行赋值", Ty->kind == TY_STRUCT ? "结构体" : "联合体");
+        writeln("  # 对%s进行赋值", type->kind == TY_STRUCT ? "结构体" : "联合体");
 
-        for (int i = 0; i < Ty->size; i++)
+        for (int i = 0; i < type->size; i++)
         {
             writeln("li t0, %d", i);
             writeln("add t0, a0, t0");
@@ -94,9 +101,13 @@ static void store(Type *Ty)
     }
 
     writeln("  # 将 a0 的值，写入到 a1 中存放的地址\n");
-    if (Ty->size == 1)
+    if (type->size == 1)
     {
         writeln("  sb a0, 0(a1)\n"); // sb 代表 "store byte"，通常用于存储 1 个字节的数据
+    }
+    else if (type->size == 4)
+    {
+        writeln("  sw a0, 0(a1)");
     }
     else
     {
@@ -433,6 +444,26 @@ static void emitData(Obj *Prog)
     }
 }
 
+// 将整形寄存器的值存入栈中
+static void storeGeneral(int Reg, int offset, int size)
+{
+
+    writeln("  # 将%s寄存器的值存入%d(fp) 的栈地址", ArgReg[Reg], offset);
+    switch (size)
+    {
+    case 1:
+        writeln("  sb %s, %d(fp)", ArgReg[Reg], offset);
+        return;
+    case 4:
+        writeln("  sw %s, %d(fp)", ArgReg[Reg], offset);
+        return;
+    case 8:
+        writeln("  sd %s, %d(fp)", ArgReg[Reg], offset);
+        return;
+    }
+    unreachable();
+}
+
 // 生成文本段（数据段）
 void emitText(Obj *Prog)
 {
@@ -480,15 +511,7 @@ void emitText(Obj *Prog)
         int cnt = 0;
         for (Obj *Var = Fn->Params; Var; Var = Var->next)
         {
-            writeln("  # 将%s寄存器的值存入%s的栈地址\n", ArgReg[cnt], Var->name);
-            if (Var->type->size == 1)
-            {
-                writeln("  sb %s, %d(fp)\n", ArgReg[cnt++], Var->offset);
-            }
-            else
-            {
-                writeln("  sd %s, %d(fp)\n", ArgReg[cnt++], Var->offset);
-            }
+            storeGeneral(cnt++, Var->offset, Var->type->size);
         }
 
         // 生成语句链表的代码

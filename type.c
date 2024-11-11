@@ -1,6 +1,6 @@
 #include "rvcc.h"
 
-Type *TyInt = &(Type){TY_INT, 8, 8};   // 为 int 类型创建 Type "常量"
+Type *TyInt = &(Type){TY_INT, 4, 4};   // 为 int 类型创建 Type "常量"
 Type *TyChar = &(Type){TY_CHAR, 1, 1}; // 为 char 类型创建 Type "常量"
 
 static Type *newType(TypeKind kind, int size, int align)

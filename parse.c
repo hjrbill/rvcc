@@ -342,7 +342,7 @@ static Node *newSubBinary(Token *Tok, Node *LHS, Node *RHS)
         return newBinary(ND_SUB, Tok, LHS, RHS);
     }
 
-    // 指针 - 指针
+    // ptr - ptr
     if (LHS->type->base && RHS->type->base)
     {
         Node *node = newBinary(ND_SUB, Tok, LHS, RHS);
@@ -353,7 +353,7 @@ static Node *newSubBinary(Token *Tok, Node *LHS, Node *RHS)
     // ptr - num
     if (LHS->type->base && isInteger(RHS->type))
     {
-        RHS = newBinary(ND_MUL, Tok, RHS, newNumNode(Tok, LHS->type->size));
+        RHS = newBinary(ND_MUL, Tok, RHS, newNumNode(Tok, LHS->type->base->size));
         return newBinary(ND_SUB, Tok, LHS, RHS);
     }
 

@@ -12,18 +12,20 @@ int main()
     ASSERT(3, ({ int foo=3; foo; }));
     ASSERT(8, ({ int foo123=3; int bar=5; foo123+bar; }));
 
+    // [48] 将 int 的大小由 8 改为 4
+    ASSERT(4, ({ int x; sizeof(x); }));
+    ASSERT(4, ({ int x; sizeof x; }));
+
     // [25] 支持 sizeof
-    ASSERT(8, ({ int x; sizeof(x); }));
-    ASSERT(8, ({ int x; sizeof x; }));
     ASSERT(8, ({ int *x; sizeof(x); }));
-    ASSERT(32, ({ int x[4]; sizeof(x); }));
-    ASSERT(96, ({ int x[3][4]; sizeof(x); }));
-    ASSERT(32, ({ int x[3][4]; sizeof(*x); }));
-    ASSERT(8, ({ int x[3][4]; sizeof(**x); }));
-    ASSERT(9, ({ int x[3][4]; sizeof(**x) + 1; }));
-    ASSERT(9, ({ int x[3][4]; sizeof **x + 1; }));
-    ASSERT(8, ({ int x[3][4]; sizeof(**x + 1); }));
-    ASSERT(8, ({ int x=1; sizeof(x=2); }));
+    ASSERT(16, ({ int x[4]; sizeof(x); }));
+    ASSERT(48, ({ int x[3][4]; sizeof(x); }));
+    ASSERT(16, ({ int x[3][4]; sizeof(*x); }));
+    ASSERT(4, ({ int x[3][4]; sizeof(**x); }));
+    ASSERT(5, ({ int x[3][4]; sizeof(**x) + 1; }));
+    ASSERT(5, ({ int x[3][4]; sizeof **x + 1; }));
+    ASSERT(4, ({ int x[3][4]; sizeof(**x + 1); }));
+    ASSERT(4, ({ int x=1; sizeof(x=2); }));
     ASSERT(1, ({ int x=1; sizeof(x=2); x; }));
     ASSERT(0, g1);
     ASSERT(3, ({ g1=3; g1; }));
@@ -31,8 +33,8 @@ int main()
     ASSERT(1, ({ g2[0]=0; g2[1]=1; g2[2]=2; g2[3]=3; g2[1]; }));
     ASSERT(2, ({ g2[0]=0; g2[1]=1; g2[2]=2; g2[3]=3; g2[2]; }));
     ASSERT(3, ({ g2[0]=0; g2[1]=1; g2[2]=2; g2[3]=3; g2[3]; }));
-    ASSERT(8, sizeof(g1));
-    ASSERT(32, sizeof(g2));
+    ASSERT(4, sizeof(g1));
+    ASSERT(16, sizeof(g2));
 
     // [28] 支持 char 类型
     ASSERT(1, ({ char x=1; x; }));
@@ -47,7 +49,7 @@ int main()
     ASSERT(3, ({ int x=2; { x=3; } x; }));
 
     // [43] 对齐局部变量
-    ASSERT(15, ({ int x; int y; char z; char *a=&y; char *b=&z; b-a; }));
+    ASSERT(7, ({ int x; int y; char z; char *a=&y; char *b=&z; b-a; }));
     ASSERT(1, ({ int x; char y; int z; char *a=&y; char *b=&z; b-a; }));
 
     printf("OK\n");
