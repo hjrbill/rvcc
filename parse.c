@@ -9,7 +9,7 @@ struct VarScope
     Obj *Var;
 };
 
-// 结构体标签域
+// 结构体标签和联合体标签的域
 typedef struct TagScope TagScope;
 struct TagScope
 {
@@ -71,13 +71,13 @@ static Member *getStructMember(Token *Tok, Type *type)
 // 判断是否为类型名
 static bool isTypename(Token *Tok)
 {
-    return equal(Tok, "char") || equal(Tok, "int") || equal(Tok, "struct");
+    return equal(Tok, "char") || equal(Tok, "int") || equal(Tok, "struct") || equal(Tok, "union");
 }
 
 // program = (functionDefinition | globalVariable)*
 // functionDefinition = declspec declarator "{" compoundStmt*
 // globalVariable = declspec ( declarator ",")* ";"
-// declspec = "char" | "int" | structDecl
+// declspec = "char" | "int" | structDecl | unionDecl
 // declarator = "*"* ident typeSuffix
 // typeSuffix = "(" funcParams | "[" num "]" typeSuffix | ε
 // funcParams = (param ("," param)*)? ")"
@@ -99,7 +99,9 @@ static bool isTypename(Token *Tok)
 // mul = unary ("*" unary | "/" unary)*
 // unary = ("+" | "-" | "*" | "&") unary | postfix
 // structMembers = (declspec declarator (","  declarator)* ";")*
-// structDecl = "{" structMembers
+// structDecl = structUnionDecl
+// unionDecl = structUnionDecl
+// structUnionDecl = ident? ("{" structMembers)?
 // postfix = primary ("[" expr "]" | "." ident)* | "->" ident)*
 // primary = "(" "{" stmt+ "}" ")"
 //         | "(" expr ")"
@@ -127,6 +129,7 @@ static Node *mul(Token **Rest, Token *Tok);
 static Node *unary(Token **Rest, Token *Tok);
 static void structMembers(Token **Rest, Token *Tok, Type *Ty);
 static Type *structDecl(Token **Rest, Token *Tok);
+static Type *unionDecl(Token **Rest, Token *Tok);
 static Node *postfix(Token **Rest, Token *Tok);
 static Node *primary(Token **Rest, Token *Tok);
 static Node *Funcall(Token **Rest, Token *Tok);
@@ -339,7 +342,7 @@ static Node *newSubBinary(Token *Tok, Node *LHS, Node *RHS)
         return newBinary(ND_SUB, Tok, LHS, RHS);
     }
 
-    // 指针 - 指针
+    // ptr - ptr
     if (LHS->type->base && RHS->type->base)
     {
         Node *node = newBinary(ND_SUB, Tok, LHS, RHS);
@@ -350,7 +353,7 @@ static Node *newSubBinary(Token *Tok, Node *LHS, Node *RHS)
     // ptr - num
     if (LHS->type->base && isInteger(RHS->type))
     {
-        RHS = newBinary(ND_MUL, Tok, RHS, newNumNode(Tok, LHS->type->size));
+        RHS = newBinary(ND_MUL, Tok, RHS, newNumNode(Tok, LHS->type->base->size));
         return newBinary(ND_SUB, Tok, LHS, RHS);
     }
 
@@ -378,9 +381,9 @@ static Node *newVarNode(Token *Tok, Obj *var)
 static Node *structRef(Node *LHS, Token *Tok)
 {
     addType(LHS);
-    if (LHS->type->kind != TY_STRUCT)
+    if (LHS->type->kind != TY_STRUCT && LHS->type->kind != TY_UNION)
     {
-        errorTok(LHS->Tok, "not a struct");
+        errorTok(LHS->Tok, "not a struct nor union");
     }
 
     Node *node = newUnary(ND_MEMBER, Tok, LHS);
@@ -474,7 +477,7 @@ static Token *function(Token *Tok, Type *declspec)
     return Tok;
 }
 
-// declspec = "char" | "int" | structDecl
+// declspec = "char" | "int" | structDecl | unionDecl
 static Type *declspec(Token **Rest, Token *Tok)
 {
     if (equal(Tok, "char"))
@@ -490,6 +493,10 @@ static Type *declspec(Token **Rest, Token *Tok)
     else if (equal(Tok, "struct"))
     {
         return structDecl(Rest, Tok->next);
+    }
+    else if (equal(Tok, "union"))
+    {
+        return unionDecl(Rest, Tok->next);
     }
     else
     {
@@ -920,10 +927,10 @@ static void structMembers(Token **Rest, Token *Tok, Type *type)
     type->Mems = Head.next;
 }
 
-// structDecl = "{" structMembers
-static Type *structDecl(Token **Rest, Token *Tok)
+// structUnionDecl = ident? ("{" structMembers)?
+static Type *structUnionDecl(Token **Rest, Token *Tok)
 {
-    // 尝试读取结构体标签
+    // 尝试读取标签
     Token *Tag = NULL;
     if (Tok->kind == TK_IDENT)
     {
@@ -949,6 +956,21 @@ static Type *structDecl(Token **Rest, Token *Tok)
     structMembers(Rest, Tok->next, type);
     type->align = 1;
 
+    // 如果是非匿名结构体，注册标签
+    if (Tag)
+    {
+        pushTagScope(Tag, type);
+    }
+
+    return type;
+}
+
+// structDecl = structUnionDecl
+static Type *structDecl(Token **Rest, Token *Tok)
+{
+    Type *type = structUnionDecl(Rest, Tok);
+    type->kind = TY_STRUCT;
+
     // 计算结构体内成员的偏移量
     int offset = 0;
     for (Member *Mem = type->Mems; Mem; Mem = Mem->next)
@@ -964,12 +986,29 @@ static Type *structDecl(Token **Rest, Token *Tok)
     }
     type->size = alignTo(offset, type->align);
 
-    // 如果是非匿名结构体，注册标签
-    if (Tag)
-    {
-        pushTagScope(Tag, type);
-    }
+    return type;
+}
 
+// unionDecl = structUnionDecl
+static Type *unionDecl(Token **Rest, Token *Tok)
+{
+    Type *type = structUnionDecl(Rest, Tok);
+    type->kind = TY_UNION;
+
+    // 联合体需要设置为最大的对齐量与大小，变量偏移量都默认为 0
+    for (Member *Mem = type->Mems; Mem; Mem = Mem->next)
+    {
+        if (type->align < Mem->type->align)
+        {
+            type->align = Mem->type->align;
+        }
+        if (type->size < Mem->type->size)
+        {
+            type->size = Mem->type->size;
+        }
+    }
+    // 将大小对齐
+    type->size = alignTo(type->size, type->align);
     return type;
 }
 
@@ -998,7 +1037,7 @@ static Node *postfix(Token **Rest, Token *Tok)
         else if (equal(Tok, "->")) // "->" ident
         {
             node = newUnary(ND_DEREF, Tok, node);
-            node=structRef(node, Tok->next);
+            node = structRef(node, Tok->next);
             Tok = Tok->next->next;
             continue;
         }

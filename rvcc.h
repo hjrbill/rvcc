@@ -68,6 +68,9 @@ bool consume(Token **Rest, Token *Tok, char *Str);
 // 词法分析入口函数
 Token *tokenizeFile(char *Path);
 
+// rvcc 源文件的某个文件的某一行出了问题，打印出文件名和行号
+#define unreachable() error("internal error at %s:%d", __FILE__, __LINE__)
+
 //
 // 语法分析
 //
@@ -86,6 +89,7 @@ typedef enum
     TY_FUNC,   // 函数
     TY_ARRAY,  // 数组
     TY_STRUCT, // 结构体
+    TY_UNION,  // 联合体
 } TypeKind;
 
 struct Type
