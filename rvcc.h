@@ -6,6 +6,7 @@
 #include <ctype.h>
 #include <stdarg.h>
 #include <stdbool.h>
+#include <stdint.h>
 #include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
@@ -43,8 +44,8 @@ struct Token
     TokenKind kind;
     Token *next;
 
-    int Val;
-    char *Loc; // 在字符串中的位置
+    int64_t Val; // TK_NUM 的值
+    char *Loc;   // 在字符串中的位置
 
     int Len; // 长度
 
@@ -84,6 +85,7 @@ typedef struct Member Member;
 typedef enum
 {
     TY_INT,    // int 整型
+    TY_LONG,   // long 长整型
     TY_CHAR,   // char 字符类型
     TY_PTR,    // 指针
     TY_FUNC,   // 函数
@@ -117,6 +119,7 @@ struct Type
 // 声明全局变量，定义在 type.c 中
 extern Type *TyInt;
 extern Type *TyChar;
+extern Type *TyLong;
 
 // 判断是否是整形
 bool isInteger(Type *Ty);
@@ -222,9 +225,9 @@ struct Node
     char *FuncName; // 函数名
     Node *Args;     // 函数参数
 
-    Obj *Var;   // ND_VAR 类型的变量名
-    Type *type; // 节点中的数据的类型
-    int Val;    // ND_NUM 类型的值
+    Type *type;  // 节点中的数据的类型
+    Obj *Var;    // ND_VAR 类型的变量
+    int64_t Val; // ND_NUM 类型的值
 };
 
 // 结构体成员

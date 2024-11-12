@@ -1,7 +1,8 @@
 #include "rvcc.h"
 
-Type *TyInt = &(Type){TY_INT, 4, 4};   // 为 int 类型创建 Type "常量"
 Type *TyChar = &(Type){TY_CHAR, 1, 1}; // 为 char 类型创建 Type "常量"
+Type *TyInt = &(Type){TY_INT, 4, 4};   // 为 int 类型创建 Type "常量"
+Type *TyLong = &(Type){TY_LONG, 8, 8}; // 为 long 类型创建 Type "常量"
 
 static Type *newType(TypeKind kind, int size, int align)
 {
@@ -14,7 +15,7 @@ static Type *newType(TypeKind kind, int size, int align)
 
 bool isInteger(Type *Ty)
 {
-    return Ty->kind == TY_INT || Ty->kind == TY_CHAR;
+    return Ty->kind == TY_CHAR || Ty->kind == TY_INT || Ty->kind == TY_LONG;
 }
 
 // 创建一个基类为 base 的指针类型
@@ -99,14 +100,14 @@ void addType(Node *node)
     case ND_MEMBER:
         node->type = node->Mem->type;
         return;
-    // 将特殊处理比较操作符节点，其类型设为 int
+    // 将特殊处理比较操作符节点，其类型设为 long
     case ND_EQ:
     case ND_NE:
     case ND_LT:
     case ND_LE:
     case ND_FUNCALL:
     case ND_NUM:
-        node->type = TyInt;
+        node->type = TyLong;
         return;
 
     case ND_VAR:

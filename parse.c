@@ -47,7 +47,7 @@ static char *getIdent(Token *Tok)
     return strndup(Tok->Loc, Tok->Len);
 }
 
-static int getNum(Token *Tok)
+static long getNum(Token *Tok)
 {
     if (Tok->kind != TK_NUM)
         errorTok(Tok, "expected a number");
@@ -71,13 +71,13 @@ static Member *getStructMember(Token *Tok, Type *type)
 // 判断是否为类型名
 static bool isTypename(Token *Tok)
 {
-    return equal(Tok, "char") || equal(Tok, "int") || equal(Tok, "struct") || equal(Tok, "union");
+    return equal(Tok, "char") || equal(Tok, "int") || equal(Tok, "long") || equal(Tok, "struct") || equal(Tok, "union");
 }
 
 // program = (functionDefinition | globalVariable)*
 // functionDefinition = declspec declarator "{" compoundStmt*
 // globalVariable = declspec ( declarator ",")* ";"
-// declspec = "char" | "int" | structDecl | unionDecl
+// declspec = "char" | "int" | "long" | structDecl | unionDecl
 // declarator = "*"* ident typeSuffix
 // typeSuffix = "(" funcParams | "[" num "]" typeSuffix | ε
 // funcParams = (param ("," param)*)? ")"
@@ -282,7 +282,7 @@ static Node *newNode(NodeKind kind, Token *Tok)
 }
 
 // 创建数字（叶子）节点
-static Node *newNumNode(Token *Tok, int Val)
+static Node *newNumNode(Token *Tok, int64_t Val)
 {
     Node *node = newNode(ND_NUM, Tok);
     node->Val = Val;
@@ -477,7 +477,7 @@ static Token *function(Token *Tok, Type *declspec)
     return Tok;
 }
 
-// declspec = "char" | "int" | structDecl | unionDecl
+// declspec = "char" | "int" | "long" | structDecl | unionDecl
 static Type *declspec(Token **Rest, Token *Tok)
 {
     if (equal(Tok, "char"))
@@ -489,6 +489,11 @@ static Type *declspec(Token **Rest, Token *Tok)
     {
         *Rest = Tok->next;
         return TyInt;
+    }
+    else if (equal(Tok, "long"))
+    {
+        *Rest = Tok->next;
+        return TyLong;
     }
     else if (equal(Tok, "struct"))
     {
