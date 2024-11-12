@@ -161,7 +161,7 @@ static bool isIdentBody(char c)
 
 static bool isKeyword(Token *T)
 {
-    static char *keywordList[] = {"return", "if", "else", "for", "while", "int", "sizeof", "char", "struct", "union"};
+    static char *keywordList[] = {"return", "if", "else", "for", "while", "int", "long", "char", "struct", "union", "sizeof"};
 
     for (int i = 0; i < sizeof(keywordList) / sizeof(*keywordList); i++)
     {

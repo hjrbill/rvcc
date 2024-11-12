@@ -30,6 +30,13 @@ int fib(int x)
         return 1;
     return fib(x - 1) + fib(x - 2);
 }
+
+// [49] 支持 long 类型
+int sub_long(long a, long b, long c)
+{
+    return a - b - c;
+}
+
 int main()
 {
     // [21] 支持最多 6 个参数的函数定义
@@ -43,7 +50,7 @@ int main()
     ASSERT(1, sub2(4, 3));
     ASSERT(55, fib(9));
     ASSERT(1, ({ sub_char(7, 3, 3); }));
-    
+
     printf("OK\n");
     return 0;
 }

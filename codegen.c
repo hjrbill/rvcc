@@ -193,7 +193,7 @@ static void genExpr(Node *node)
     case ND_NUM: // 是整型
         writeln("  # 将%d加载到 a0 中\n", node->Val);
         // li 为 addi 别名指令，加载一个立即数到寄存器中
-        writeln("  li a0, %d\n", node->Val);
+        writeln("  li a0, %ld\n", node->Val);
         return;
     case ND_STMT_EXPR:
     {
