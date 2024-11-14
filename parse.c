@@ -71,13 +71,13 @@ static Member *getStructMember(Token *Tok, Type *type)
 // 判断是否为类型名
 static bool isTypename(Token *Tok)
 {
-    return equal(Tok, "char") || equal(Tok, "int") || equal(Tok, "long") || equal(Tok, "struct") || equal(Tok, "union");
+    return equal(Tok, "char") || equal(Tok, "int") || equal(Tok, "short") || equal(Tok, "long") || equal(Tok, "struct") || equal(Tok, "union");
 }
 
 // program = (functionDefinition | globalVariable)*
 // functionDefinition = declspec declarator "{" compoundStmt*
 // globalVariable = declspec ( declarator ",")* ";"
-// declspec = "char" | "int" | "long" | structDecl | unionDecl
+// declspec = "char" | "short" | "int" | "long" | structDecl | unionDecl
 // declarator = "*"* ident typeSuffix
 // typeSuffix = "(" funcParams | "[" num "]" typeSuffix | ε
 // funcParams = (param ("," param)*)? ")"
@@ -477,7 +477,7 @@ static Token *function(Token *Tok, Type *declspec)
     return Tok;
 }
 
-// declspec = "char" | "int" | "long" | structDecl | unionDecl
+// declspec = "char" | "short" | "int" | "long" | structDecl | unionDecl
 static Type *declspec(Token **Rest, Token *Tok)
 {
     if (equal(Tok, "char"))
@@ -489,6 +489,11 @@ static Type *declspec(Token **Rest, Token *Tok)
     {
         *Rest = Tok->next;
         return TyInt;
+    }
+    else if (equal(Tok, "short"))
+    {
+        *Rest = Tok->next;
+        return TyShort;
     }
     else if (equal(Tok, "long"))
     {

@@ -55,6 +55,9 @@ int main()
     // [49] 支持 long 类型
     ASSERT(8, ({ long x; sizeof(x); }));
 
+    // [50] 支持 short 类型
+    ASSERT(2, ({ short x; sizeof(x); }));
+
     printf("OK\n");
     return 0;
 }
