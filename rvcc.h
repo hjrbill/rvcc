@@ -188,6 +188,7 @@ struct Obj
 
     // 函数 或 全局变量
     bool isFunction;
+    bool isDefinition; // 是否为函数定义 (注意，是定义，不是声明)
 
     // 全局变量
     char *InitData;

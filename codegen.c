@@ -481,7 +481,7 @@ void emitText(Obj *Prog)
 {
     for (Obj *Fn = Prog; Fn; Fn = Fn->next)
     {
-        if (!Fn->isFunction)
+        if (!Fn->isFunction || !Fn->isDefinition)
         {
             continue;
         }

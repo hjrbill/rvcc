@@ -455,6 +455,13 @@ static Token *function(Token *Tok, Type *declspec)
     Type *Ty = declarator(&Tok, Tok, declspec);
     Obj *fn = newGlobalVar(getIdent(Ty->name), Ty); // 全局函数是一种特殊的全局变量
     fn->isFunction = true;
+    fn->isDefinition=!consume(&Tok, Tok, ";");
+
+    // 如果不是函数定义，直接返回
+    if (!fn->isDefinition)
+    {
+        return Tok;
+    }
 
     // 清空上一个函数的 Locals
     Locals = NULL;
