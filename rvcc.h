@@ -85,6 +85,7 @@ typedef struct Member Member;
 typedef enum
 {
     TY_INT,    // int 整型
+    TY_SHORT,  // short 短整型
     TY_LONG,   // long 长整型
     TY_CHAR,   // char 字符类型
     TY_PTR,    // 指针
@@ -117,8 +118,9 @@ struct Type
 };
 
 // 声明全局变量，定义在 type.c 中
-extern Type *TyInt;
 extern Type *TyChar;
+extern Type *TyInt;
+extern Type *TyShort;
 extern Type *TyLong;
 
 // 判断是否是整形
@@ -186,6 +188,7 @@ struct Obj
 
     // 函数 或 全局变量
     bool isFunction;
+    bool isDefinition; // 是否为函数定义 (注意，是定义，不是声明)
 
     // 全局变量
     char *InitData;

@@ -71,14 +71,14 @@ static Member *getStructMember(Token *Tok, Type *type)
 // 判断是否为类型名
 static bool isTypename(Token *Tok)
 {
-    return equal(Tok, "char") || equal(Tok, "int") || equal(Tok, "long") || equal(Tok, "struct") || equal(Tok, "union");
+    return equal(Tok, "char") || equal(Tok, "int") || equal(Tok, "short") || equal(Tok, "long") || equal(Tok, "struct") || equal(Tok, "union");
 }
 
 // program = (functionDefinition | globalVariable)*
 // functionDefinition = declspec declarator "{" compoundStmt*
 // globalVariable = declspec ( declarator ",")* ";"
-// declspec = "char" | "int" | "long" | structDecl | unionDecl
-// declarator = "*"* ident typeSuffix
+// declspec = "char" | "short" | "int" | "long" | structDecl | unionDecl
+// declarator = "*"* ("(" ident ")" | "(" declarator ")" | ident) typeSuffix
 // typeSuffix = "(" funcParams | "[" num "]" typeSuffix | ε
 // funcParams = (param ("," param)*)? ")"
 // param = declspec declarator
@@ -455,6 +455,13 @@ static Token *function(Token *Tok, Type *declspec)
     Type *Ty = declarator(&Tok, Tok, declspec);
     Obj *fn = newGlobalVar(getIdent(Ty->name), Ty); // 全局函数是一种特殊的全局变量
     fn->isFunction = true;
+    fn->isDefinition=!consume(&Tok, Tok, ";");
+
+    // 如果不是函数定义，直接返回
+    if (!fn->isDefinition)
+    {
+        return Tok;
+    }
 
     // 清空上一个函数的 Locals
     Locals = NULL;
@@ -477,7 +484,7 @@ static Token *function(Token *Tok, Type *declspec)
     return Tok;
 }
 
-// declspec = "char" | "int" | "long" | structDecl | unionDecl
+// declspec = "char" | "short" | "int" | "long" | structDecl | unionDecl
 static Type *declspec(Token **Rest, Token *Tok)
 {
     if (equal(Tok, "char"))
@@ -489,6 +496,11 @@ static Type *declspec(Token **Rest, Token *Tok)
     {
         *Rest = Tok->next;
         return TyInt;
+    }
+    else if (equal(Tok, "short"))
+    {
+        *Rest = Tok->next;
+        return TyShort;
     }
     else if (equal(Tok, "long"))
     {
@@ -510,7 +522,7 @@ static Type *declspec(Token **Rest, Token *Tok)
     }
 }
 
-// declarator = "*"* ident typeSuffix
+// declarator = "*"* ("(" ident ")" | "(" declarator ")" | ident) typeSuffix
 static Type *declarator(Token **Rest, Token *Tok, Type *type)
 {
     // "*"*
@@ -519,14 +531,31 @@ static Type *declarator(Token **Rest, Token *Tok, Type *type)
         type = pointerTo(type);
     }
 
+    // "(" declarator ")" | "( ident ")"
+    if (equal(Tok, "("))
+    {
+        Token *start = Tok;
+        Type Dummy = {};
+        // 使 Tok 前进到")"后面的位置
+        declarator(&Tok, start->next, &Dummy);
+        Tok = skip(Tok, ")");
+        // 获取到括号后面的类型后缀，Ty 为解析完的类型，Rest 指向分号
+        type = typeSuffix(Rest, Tok, type);
+        // 解析 type 整体作为 Base 去构造，返回 Type 的值
+        return declarator(&Tok, start->next, type);
+    }
+
     if (Tok->kind != TK_IDENT)
     {
         errorTok(Tok, "expected a variable name");
     }
 
+    // typeSuffix
     type = typeSuffix(Rest, Tok->next, type);
+
     // ident
     type->name = Tok; // 变量名或函数名
+
     return type;
 }
 

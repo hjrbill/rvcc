@@ -65,6 +65,11 @@ static void load(Type *type)
         // lb rd, rs1, 从内存中加载一个 8 位 (1 字节) 的操作数 rs1 到寄存器 rd 中
         writeln("  lb a0, 0(a0)\n");
     }
+    else if (type->size == 2)
+    {
+        // lh rd, rs1, 从内存中加载一个 16 位（2 字节）的操作数 rs1 到寄存器 rd 中
+        writeln("  lh a0, 0(a0)\n");
+    }
     else if (type->size == 4)
     {
         // lw rd, rs1, 从内存中加载一个 32 位（4 字节）的操作数 rs1 到寄存器 rd 中
@@ -104,6 +109,10 @@ static void store(Type *type)
     if (type->size == 1)
     {
         writeln("  sb a0, 0(a1)\n"); // sb 代表 "store byte"，通常用于存储 1 个字节的数据
+    }
+    else if (type->size == 2)
+    {
+        writeln("  sh a0, 0(a1)\n");
     }
     else if (type->size == 4)
     {
@@ -452,13 +461,16 @@ static void storeGeneral(int Reg, int offset, int size)
     switch (size)
     {
     case 1:
-        writeln("  sb %s, %d(fp)", ArgReg[Reg], offset);
+        writeln("   sb %s, %d(fp)", ArgReg[Reg], offset);
+        return;
+    case 2:
+        writeln("   sh %s, %d(fp)", ArgReg[Reg], offset);
         return;
     case 4:
-        writeln("  sw %s, %d(fp)", ArgReg[Reg], offset);
+        writeln("   sw %s, %d(fp)", ArgReg[Reg], offset);
         return;
     case 8:
-        writeln("  sd %s, %d(fp)", ArgReg[Reg], offset);
+        writeln("   sd %s, %d(fp)", ArgReg[Reg], offset);
         return;
     }
     unreachable();
@@ -469,7 +481,7 @@ void emitText(Obj *Prog)
 {
     for (Obj *Fn = Prog; Fn; Fn = Fn->next)
     {
-        if (!Fn->isFunction)
+        if (!Fn->isFunction || !Fn->isDefinition)
         {
             continue;
         }

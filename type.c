@@ -1,8 +1,10 @@
 #include "rvcc.h"
 
-Type *TyChar = &(Type){TY_CHAR, 1, 1}; // 为 char 类型创建 Type "常量"
-Type *TyInt = &(Type){TY_INT, 4, 4};   // 为 int 类型创建 Type "常量"
-Type *TyLong = &(Type){TY_LONG, 8, 8}; // 为 long 类型创建 Type "常量"
+// (Type){...}构造了一个复合字面量，相当于 Type 的匿名变量
+Type *TyChar = &(Type){TY_CHAR, 1, 1};
+Type *TyShort = &(Type){TY_SHORT, 2, 2};
+Type *TyInt = &(Type){TY_INT, 4, 4};
+Type *TyLong = &(Type){TY_LONG, 8, 8};
 
 static Type *newType(TypeKind kind, int size, int align)
 {
@@ -15,7 +17,8 @@ static Type *newType(TypeKind kind, int size, int align)
 
 bool isInteger(Type *Ty)
 {
-    return Ty->kind == TY_CHAR || Ty->kind == TY_INT || Ty->kind == TY_LONG;
+    TypeKind K = Ty->kind;
+    return K == TY_CHAR || K == TY_SHORT || K == TY_INT || K == TY_LONG;
 }
 
 // 创建一个基类为 base 的指针类型

@@ -37,6 +37,12 @@ int sub_long(long a, long b, long c)
     return a - b - c;
 }
 
+// [50] 支持 short 类型
+int sub_short(short a, short b, short c)
+{
+    return a - b - c;
+}
+
 int main()
 {
     // [21] 支持最多 6 个参数的函数定义
