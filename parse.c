@@ -71,13 +71,29 @@ static Member *getStructMember(Token *Tok, Type *type)
 // 判断是否为类型名
 static bool isTypename(Token *Tok)
 {
-    return equal(Tok, "char") || equal(Tok, "int") || equal(Tok, "short") || equal(Tok, "long") || equal(Tok, "struct") || equal(Tok, "union");
+    static char *Kw[] = {
+        "void",
+        "char",
+        "short",
+        "int",
+        "long",
+        "struct",
+        "union",
+    };
+
+    for (int i = 0; i < sizeof(Kw) / sizeof(*Kw); ++i)
+    {
+        if (equal(Tok, Kw[i]))
+            return true;
+    }
+
+    return false;
 }
 
 // program = (functionDefinition | globalVariable)*
 // functionDefinition = declspec declarator "{" compoundStmt*
 // globalVariable = declspec ( declarator ",")* ";"
-// declspec = "char" | "short" | "int" | "long" | structDecl | unionDecl
+// declspec = "void" | "char" | "short" | "int" | "long" | structDecl | unionDecl
 // declarator = "*"* ("(" ident ")" | "(" declarator ")" | ident) typeSuffix
 // typeSuffix = "(" funcParams | "[" num "]" typeSuffix | ε
 // funcParams = (param ("," param)*)? ")"
@@ -455,7 +471,7 @@ static Token *function(Token *Tok, Type *declspec)
     Type *Ty = declarator(&Tok, Tok, declspec);
     Obj *fn = newGlobalVar(getIdent(Ty->name), Ty); // 全局函数是一种特殊的全局变量
     fn->isFunction = true;
-    fn->isDefinition=!consume(&Tok, Tok, ";");
+    fn->isDefinition = !consume(&Tok, Tok, ";");
 
     // 如果不是函数定义，直接返回
     if (!fn->isDefinition)
@@ -484,10 +500,15 @@ static Token *function(Token *Tok, Type *declspec)
     return Tok;
 }
 
-// declspec = "char" | "short" | "int" | "long" | structDecl | unionDecl
+// declspec = "void" | "char" | "short" | "int" | "long" | structDecl | unionDecl
 static Type *declspec(Token **Rest, Token *Tok)
 {
-    if (equal(Tok, "char"))
+    if (equal(Tok, "void"))
+    {
+        *Rest = Tok->next;
+        return TyVoid;
+    }
+    else if (equal(Tok, "char"))
     {
         *Rest = Tok->next;
         return TyChar;
@@ -657,8 +678,13 @@ static Node *declaration(Token **Rest, Token *Tok)
             Tok = skip(Tok, ",");
         }
 
-        Type *Ty = declarator(&Tok, Tok, baseType);
-        Obj *Var = newLocalVar(getIdent(Ty->name), Ty);
+        Type *type = declarator(&Tok, Tok, baseType);
+        if (type == TY_VOID)
+        {
+            errorTok(Tok, "variable declared void");
+        }
+
+        Obj *Var = newLocalVar(getIdent(type->name), type);
 
         // 如果不存在"="则为变量声明，不需要生成节点，已经存储在 Locals 中了
         if (!equal(Tok, "="))
@@ -666,7 +692,7 @@ static Node *declaration(Token **Rest, Token *Tok)
             continue;
         }
 
-        Node *LHS = newVarNode(Ty->name, Var);
+        Node *LHS = newVarNode(type->name, Var);
         Node *RHS = assign(&Tok, Tok->next);
         Node *node = newBinary(ND_ASSIGN, Tok, LHS, RHS);
 
