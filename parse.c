@@ -93,7 +93,8 @@ static bool isTypename(Token *Tok)
 // program = (functionDefinition | globalVariable)*
 // functionDefinition = declspec declarator "{" compoundStmt*
 // globalVariable = declspec ( declarator ",")* ";"
-// declspec = "void" | "char" | "short" | "int" | "long" | structDecl | unionDecl
+// declspec = ("void" | "char" | "short" | "int" | "long"
+//             | structDecl | unionDecl)+
 // declarator = "*"* ("(" ident ")" | "(" declarator ")" | ident) typeSuffix
 // typeSuffix = "(" funcParams | "[" num "]" typeSuffix | ε
 // funcParams = (param ("," param)*)? ")"
@@ -128,6 +129,7 @@ static bool isTypename(Token *Tok)
 // Funcall = ident "(" (assign ("," assign)*)? ")"
 static Token *function(Token *Tok, Type *declspec);
 static Token *globalVariable(Token *Tok, Type *declspec);
+static bool isTypename(Token *Tok);
 static Type *declspec(Token **Rest, Token *Tok);
 static Type *declarator(Token **Rest, Token *Tok, Type *Ty);
 static Type *typeSuffix(Token **Rest, Token *Tok, Type *Ty);
@@ -500,47 +502,94 @@ static Token *function(Token *Tok, Type *declspec)
     return Tok;
 }
 
-// declspec = "void" | "char" | "short" | "int" | "long" | structDecl | unionDecl
+// declspec = ("void" | "char" | "short" | "int" | "long"
+//             | structDecl | unionDecl)+
 static Type *declspec(Token **Rest, Token *Tok)
 {
-    if (equal(Tok, "void"))
+    // 类型的组合，被表示为例如：LONG+LONG=1<<9 (long int 和 int long 是等价的)
+    enum
     {
-        *Rest = Tok->next;
-        return TyVoid;
-    }
-    else if (equal(Tok, "char"))
+        VOID = 1 << 0,
+        CHAR = 1 << 2,
+        SHORT = 1 << 4,
+        INT = 1 << 6,
+        LONG = 1 << 8,
+        OTHER = 1 << 10,
+    };
+
+    Type *type = TyInt;
+    int Counter = 0; // 记录类型相加的数值
+    while (isTypename(Tok))
     {
-        *Rest = Tok->next;
-        return TyChar;
+        if (equal(Tok, "struct") || equal(Tok, "union"))
+        {
+            if (equal(Tok, "struct"))
+                type = structDecl(&Tok, Tok->next);
+            else
+                type = unionDecl(&Tok, Tok->next);
+            Counter += OTHER;
+            continue;
+        }
+
+        // 对于出现的类型名加入 Counter
+        if (equal(Tok, "void"))
+        {
+            Counter += VOID;
+        }
+        else if (equal(Tok, "char"))
+        {
+            Counter += CHAR;
+        }
+        else if (equal(Tok, "short"))
+        {
+            Counter += SHORT;
+        }
+        else if (equal(Tok, "int"))
+        {
+            Counter += INT;
+        }
+        else if (equal(Tok, "long"))
+        {
+            Counter += LONG;
+        }
+        else // 每一步的 Counter 都需要有合法值
+        {
+            unreachable();
+        }
+
+        // 根据 Counter 值映射到对应的 Type
+        switch (Counter)
+        {
+        case VOID:
+            type = TyVoid;
+            break;
+        case CHAR:
+            type = TyChar;
+            break;
+        case SHORT:
+        case SHORT + INT:
+            type = TyShort;
+            break;
+        case INT:
+            type = TyInt;
+            break;
+        case LONG:
+        case LONG + INT:
+            type = TyLong;
+            break;
+        case LONG + LONG:
+        case LONG + LONG + INT:
+            type = TyLong;
+            break;  
+        default:
+            errorTok(Tok, "invalid type");
+        }
+
+        Tok = Tok->next;
     }
-    else if (equal(Tok, "int"))
-    {
-        *Rest = Tok->next;
-        return TyInt;
-    }
-    else if (equal(Tok, "short"))
-    {
-        *Rest = Tok->next;
-        return TyShort;
-    }
-    else if (equal(Tok, "long"))
-    {
-        *Rest = Tok->next;
-        return TyLong;
-    }
-    else if (equal(Tok, "struct"))
-    {
-        return structDecl(Rest, Tok->next);
-    }
-    else if (equal(Tok, "union"))
-    {
-        return unionDecl(Rest, Tok->next);
-    }
-    else
-    {
-        errorTok(Tok, "undefined type");
-        return NULL;
-    }
+
+    *Rest = Tok;
+    return type;
 }
 
 // declarator = "*"* ("(" ident ")" | "(" declarator ")" | ident) typeSuffix
