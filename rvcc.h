@@ -84,6 +84,7 @@ typedef struct Member Member;
 // 类型种类
 typedef enum
 {
+    TY_VOID,   // void 类型
     TY_INT,    // int 整型
     TY_SHORT,  // short 短整型
     TY_LONG,   // long 长整型
@@ -118,6 +119,7 @@ struct Type
 };
 
 // 声明全局变量，定义在 type.c 中
+extern Type *TyVoid;
 extern Type *TyChar;
 extern Type *TyInt;
 extern Type *TyShort;

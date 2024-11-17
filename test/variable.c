@@ -68,6 +68,11 @@ int main()
     ASSERT(3, ({ char *x[3]; char y; x[0]=&y; y=3; x[0][0]; }));
     ASSERT(4, ({ char x[3]; char (*y)[3]=x; y[0][0]=4; y[0][0]; }));
 
+    // [52] 支持 void 类型
+    {
+        void *x;
+    }
+
     printf("OK\n");
     return 0;
 }
