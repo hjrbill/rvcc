@@ -1,12 +1,13 @@
 #include "rvcc.h"
 
-// 变量域
+// 局部和全局变量或是 typedef 的域
 typedef struct VarScope VarScope;
 struct VarScope
 {
     VarScope *next;
     char *name;
     Obj *Var;
+    Type *Typedef; // 别名
 };
 
 // 结构体标签和联合体标签的域
@@ -28,6 +29,12 @@ struct scope
     VarScope *Vars;
     TagScope *Tags;
 };
+
+// 变量属性
+typedef struct
+{
+    bool IsTypedef; // 是否为类型别名
+} VarAttr;
 
 // 存储当前解析中的变量
 Obj *Locals;  // 局部变量 (局部函数/嵌套函数)
@@ -68,38 +75,17 @@ static Member *getStructMember(Token *Tok, Type *type)
     return NULL;
 }
 
-// 判断是否为类型名
-static bool isTypename(Token *Tok)
-{
-    static char *Kw[] = {
-        "void",
-        "char",
-        "short",
-        "int",
-        "long",
-        "struct",
-        "union",
-    };
-
-    for (int i = 0; i < sizeof(Kw) / sizeof(*Kw); ++i)
-    {
-        if (equal(Tok, Kw[i]))
-            return true;
-    }
-
-    return false;
-}
-
-// program = (functionDefinition | globalVariable)*
+// program = (typedef | functionDefinition | globalVariable)*
 // functionDefinition = declspec declarator "{" compoundStmt*
 // globalVariable = declspec ( declarator ",")* ";"
 // declspec = ("void" | "char" | "short" | "int" | "long"
-//             | structDecl | unionDecl)+
+//             | "typedef"
+//             | structDecl | unionDecl | typedefName)+
 // declarator = "*"* ("(" ident ")" | "(" declarator ")" | ident) typeSuffix
 // typeSuffix = "(" funcParams | "[" num "]" typeSuffix | ε
 // funcParams = (param ("," param)*)? ")"
 // param = declspec declarator
-// compoundStmt = (declaration | stmt)* "}"
+// compoundStmt = (typedef | declaration | stmt)* "}"
 // declaration = declspec (declarator ("=" expr)? ("," declarator ("=" expr)?)*)? ";"
 // stmt = "return" expr ";"
 //        | "if" "(" expr ")" stmt ("else" stmt)?
@@ -130,12 +116,13 @@ static bool isTypename(Token *Tok)
 static Token *function(Token *Tok, Type *declspec);
 static Token *globalVariable(Token *Tok, Type *declspec);
 static bool isTypename(Token *Tok);
-static Type *declspec(Token **Rest, Token *Tok);
+static Type *declspec(Token **Rest, Token *Tok, VarAttr *Attr);
 static Type *declarator(Token **Rest, Token *Tok, Type *Ty);
 static Type *typeSuffix(Token **Rest, Token *Tok, Type *Ty);
 static Type *funcParams(Token **Rest, Token *Tok, Type *Ty);
+static Token *parseTypedef(Token *Tok, Type *BaseTy);
 static Node *compoundStmt(Token **Rest, Token *Tok);
-static Node *declaration(Token **Rest, Token *Tok);
+static Node *declaration(Token **Rest, Token *Tok, Type *BaseTy);
 static Node *stmt(Token **Rest, Token *Tok);
 static Node *exprStmt(Token **Rest, Token *Tok);
 static Node *expr(Token **Rest, Token *Tok);
@@ -168,7 +155,7 @@ static void leaveScope(void)
 }
 
 // 通过 Token 查找变量
-static Obj *FindVarByName(Token *Tok)
+static VarScope *FindVarByName(Token *Tok)
 {
     // 从最深层的域向上寻找
     for (scope *ScoPtr = Scp; ScoPtr; ScoPtr = ScoPtr->next)
@@ -177,7 +164,7 @@ static Obj *FindVarByName(Token *Tok)
         {
             if (equal(Tok, varPtr->name))
             {
-                return varPtr->Var;
+                return varPtr;
             }
         }
     }
@@ -201,12 +188,25 @@ static Type *FindTag(Token *Tok)
     return NULL;
 }
 
+// 查找类型别名
+static Type *findTypedef(Token *Tok)
+{
+    if (Tok->kind == TK_IDENT) // 类型别名是个标识符
+    {
+        VarScope *S = FindVarByName(Tok);
+        if (S)
+        {
+            return S->Typedef;
+        }
+    }
+    return NULL;
+}
+
 // 将变量存入当前的域中
-static VarScope *pushVarScope(char *Name, Obj *Var)
+static VarScope *pushVarScope(char *Name)
 {
     VarScope *S = calloc(1, sizeof(VarScope));
     S->name = Name;
-    S->Var = Var;
 
     S->next = Scp->Vars;
     Scp->Vars = S;
@@ -225,13 +225,39 @@ static void *pushTagScope(Token *NameTok, Type *Type)
     Scp->Tags = S;
 }
 
+// 判断是否为类型名
+static bool isTypename(Token *Tok)
+{
+    static char *Kw[] = {
+        "void",
+        "char",
+        "short",
+        "int",
+        "long",
+        "struct",
+        "union",
+        "typedef",
+    };
+
+    for (int i = 0; i < sizeof(Kw) / sizeof(*Kw); ++i)
+    {
+        if (equal(Tok, Kw[i]))
+        {
+            return true;
+        }      
+    }
+
+    // 查找是否为类型别名
+    return findTypedef(Tok);
+}
+
 static Obj *newVar(char *name, Type *type)
 {
     Obj *Var = calloc(1, sizeof(Obj));
     Var->name = name;
     Var->type = type;
 
-    pushVarScope(name, Var);
+    pushVarScope(name)->Var = Var;
 
     return Var;
 }
@@ -424,14 +450,22 @@ static bool isFunction(Token *Tok)
 }
 
 // 语法解析入口函数
-// program = (functionDefinition | globalVariable)*
+// program = (typedef | functionDefinition | globalVariable)*
 Obj *parse(Token *Tok)
 {
     Globals = NULL;
 
     while (Tok->kind != TK_EOF)
     {
-        Type *baseType = declspec(&Tok, Tok);
+        VarAttr Attr = {};
+        Type *baseType = declspec(&Tok, Tok, &Attr);
+
+        // typedef
+        if (Attr.IsTypedef)
+        {
+            Tok = parseTypedef(Tok, baseType);
+            continue;
+        }
 
         if (isFunction(Tok))
         {
@@ -503,8 +537,9 @@ static Token *function(Token *Tok, Type *declspec)
 }
 
 // declspec = ("void" | "char" | "short" | "int" | "long"
-//             | structDecl | unionDecl)+
-static Type *declspec(Token **Rest, Token *Tok)
+//             | "typedef"
+//             | structDecl | unionDecl | typedefName)+
+static Type *declspec(Token **Rest, Token *Tok, VarAttr *Attr)
 {
     // 类型的组合，被表示为例如：LONG+LONG=1<<9 (long int 和 int long 是等价的)
     enum
@@ -521,12 +556,42 @@ static Type *declspec(Token **Rest, Token *Tok)
     int Counter = 0; // 记录类型相加的数值
     while (isTypename(Tok))
     {
-        if (equal(Tok, "struct") || equal(Tok, "union"))
+        // 处理 typedef 关键字
+        if (equal(Tok, "typedef"))
         {
+            if (!Attr)
+            {
+                errorTok(Tok, "storage class specifier is not allowed in this context");
+            }
+            Attr->IsTypedef = true;
+            Tok = Tok->next;
+            continue;
+        }
+
+        // 处理用户定义的类型
+        Type *Ty = findTypedef(Tok);
+        if (equal(Tok, "struct") || equal(Tok, "union") || Ty)
+        {
+            if (Counter)
+            {
+                break;
+            }
+
             if (equal(Tok, "struct"))
+            {
                 type = structDecl(&Tok, Tok->next);
-            else
+            }
+            else if (equal(Tok, "union"))
+            {
                 type = unionDecl(&Tok, Tok->next);
+            }
+            else
+            {
+                // 将类型设为类型别名指向的类型
+                type = Ty;
+                Tok = Tok->next;
+            }
+
             Counter += OTHER;
             continue;
         }
@@ -580,7 +645,7 @@ static Type *declspec(Token **Rest, Token *Tok)
         case LONG + LONG:
         case LONG + LONG + INT:
             type = TyLong;
-            break;  
+            break;
         default:
             errorTok(Tok, "invalid type");
         }
@@ -661,7 +726,7 @@ static Type *funcParams(Token **Rest, Token *Tok, Type *Ty)
         // param = declspec declarator
         if (Cur != &Head)
             Tok = skip(Tok, ",");
-        Type *BaseTy = declspec(&Tok, Tok);
+        Type *BaseTy = declspec(&Tok, Tok, NULL);
         Type *DeclarTy = declarator(&Tok, Tok, BaseTy);
         Cur->next = copyType(DeclarTy); // 将类型复制到形参链表一份
         Cur = Cur->next;
@@ -673,9 +738,28 @@ static Type *funcParams(Token **Rest, Token *Tok, Type *Ty)
     return Ty;
 }
 
+// 解析类型别名
+static Token *parseTypedef(Token *Tok, Type *BaseTy)
+{
+    bool First = true;
+
+    while (!consume(&Tok, Tok, ";"))
+    {
+        if (!First){
+            Tok = skip(Tok, ",");
+        }
+        First = false;
+        Type *Ty = declarator(&Tok, Tok, BaseTy);
+        // 类型别名的变量名存入变量域中，并设置类型
+        pushVarScope(getIdent(Ty->name))->Typedef = Ty;
+    }
+
+    return Tok;
+}
+
 // compoundStmt = (declaration | stmt)* "}"
 // 解析复合语句
-static Node *compoundStmt(Token **Rest, Token *T)
+static Node *compoundStmt(Token **Rest, Token *Tok)
 {
     Node Head = {};
     Node *Cur = &Head;
@@ -683,36 +767,44 @@ static Node *compoundStmt(Token **Rest, Token *T)
     // 进入新的域
     enterScope();
 
-    while (!equal(T, "}"))
+    while (!equal(Tok, "}"))
     {
-        if (isTypename(T)) // declaration
+        if (isTypename(Tok)) // declaration
         {
-            Cur->next = declaration(&T, T);
+            VarAttr Attr = {};
+            Type *BaseTy = declspec(&Tok, Tok, &Attr);
+
+            // 解析 typedef 的语句
+            if (Attr.IsTypedef)
+            {
+                Tok = parseTypedef(Tok, BaseTy);
+                continue;
+            }
+
+            // 解析变量声明语句
+            Cur->next = declaration(&Tok, Tok, BaseTy);
         }
         else // stmt
         {
-            Cur->next = stmt(&T, T);
+            Cur->next = stmt(&Tok, Tok);
         }
         Cur = Cur->next;
         addType(Cur); // 为节点添加类型信息
     }
-    *Rest = skip(T, "}");
+    *Rest = skip(Tok, "}");
 
     // 结束当前域
     leaveScope();
 
-    Node *node = newNode(ND_BLOCK, T);
+    Node *node = newNode(ND_BLOCK, Tok);
     node->Body = Head.next; // 代码块节点的 body 存储了该代码块的语句
 
     return node;
 }
 
 // declaration = declspec (declarator ("=" expr)? ("," declarator ("=" expr)?)*)? ";"
-static Node *declaration(Token **Rest, Token *Tok)
+static Node *declaration(Token **Rest, Token *Tok, Type *BaseTy)
 {
-    // declspec
-    Type *baseType = declspec(&Tok, Tok); // 声明的 基础类型
-
     Node head = {};
     Node *Cur = &head;
 
@@ -727,7 +819,7 @@ static Node *declaration(Token **Rest, Token *Tok)
             Tok = skip(Tok, ",");
         }
 
-        Type *type = declarator(&Tok, Tok, baseType);
+        Type *type = declarator(&Tok, Tok, BaseTy);
         if (type == TY_VOID)
         {
             errorTok(Tok, "variable declared void");
@@ -1009,7 +1101,7 @@ static void structMembers(Token **Rest, Token *Tok, Type *type)
     while (!equal(Tok, "}"))
     {
         // declspec
-        Type *BaseTy = declspec(&Tok, Tok);
+        Type *BaseTy = declspec(&Tok, Tok, NULL);
 
         bool isFirst = true;
         while (!consume(&Tok, Tok, ";"))
@@ -1198,12 +1290,12 @@ static Node *primary(Token **Rest, Token *Tok)
             return Funcall(Rest, Tok);
         }
 
-        Obj *var = FindVarByName(Tok);
-        if (var == NULL)
+        VarScope *S = FindVarByName(Tok);
+        if (!S || !S->Var)
         {
             errorTok(Tok, "undefined variable");
         }
-        Node *node = newVarNode(Tok, var);
+        Node *node = newVarNode(Tok, S->Var);
         *Rest = Tok->next;
         return node;
     }

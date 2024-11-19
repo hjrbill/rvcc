@@ -146,11 +146,7 @@ static int isPunct(char *P)
 // 判断是否符号标识符首字母
 static bool isIdentHead(char c)
 {
-    if ('a' <= c && c <= 'z' || c == '_')
-    {
-        return true;
-    }
-    return false;
+    return ('a' <= c && c <= 'z') || ('A' <= c && c <= 'Z') || c == '_';
 }
 
 // 判断是否符号标识符的非首字母部分
@@ -161,7 +157,7 @@ static bool isIdentBody(char c)
 
 static bool isKeyword(Token *T)
 {
-    static char *keywordList[] = {"return", "if", "else", "for", "while", "int", "long", "short", "char", "struct", "union", "sizeof", "void"};
+    static char *keywordList[] = {"return", "if", "else", "for", "while", "int", "long", "short", "char", "struct", "union", "sizeof", "void", "typedef"};
 
     for (int i = 0; i < sizeof(keywordList) / sizeof(*keywordList); i++)
     {
@@ -339,7 +335,7 @@ Token *tokenize(char *Filename, char *P)
             }
             continue;
         }
-        else if (startsWith(P, "/*")) // 跳过块注释
+        if (startsWith(P, "/*")) // 跳过块注释
         {
             // 查找第一个"*/"的位置
             char *Q = strstr(P + 2, "*/");
@@ -356,7 +352,8 @@ Token *tokenize(char *Filename, char *P)
             ++P;
             continue;
         }
-        else if (isdigit(*P))
+
+        if (isdigit(*P))
         {
             char *start = P;
             const int num = strtoul(P, &P, 10);
@@ -366,14 +363,16 @@ Token *tokenize(char *Filename, char *P)
             Cur->Val = num;
             continue;
         }
-        else if (*P == '"') // 解析字符串字面量
+
+        if (*P == '"') // 解析字符串字面量
         {
             Cur->next = readStringLiteral(P);
             Cur = Cur->next;
             P += Cur->Len;
             continue;
         }
-        else if (isIdentHead(*P)) // 解析标记符或关键字
+
+        if (isIdentHead(*P)) // 解析标记符或关键字
         {
             char *start = P;
             do
@@ -391,18 +390,16 @@ Token *tokenize(char *Filename, char *P)
             Cur->next = newToken(TK_PUNCT, P, P + length);
             Cur = Cur->next;
             P += length;
+            continue;
         }
-        else
-        {
-            errorAt(P, "invalid token");
-        }
+        errorAt(P, "invalid token");
     }
 
     Cur->next = newToken(TK_EOF, P, P); // 添加终止节点
 
     addLineNumbers(Head.next); // 为所有 Token 添加行号
 
-    convertKeywords(Cur);
+    convertKeywords(Head.next);
     return Head.next;
 }
 
