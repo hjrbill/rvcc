@@ -109,9 +109,12 @@ static Member *getStructMember(Token *Tok, Type *type)
 // primary = "(" "{" stmt+ "}" ")"
 //         | "(" expr ")"
 //         | "sizeof" unary
+//         | "sizeof" "(" typeName ")"
 //         | ident funcArgs?
 //         | str
 //         | num
+// typeName = declspec abstractDeclarator
+// abstractDeclarator = "*"* ("(" abstractDeclarator ")")? typeSuffix
 // Funcall = ident "(" (assign ("," assign)*)? ")"
 static Token *function(Token *Tok, Type *declspec);
 static Token *globalVariable(Token *Tok, Type *declspec);
@@ -137,6 +140,8 @@ static Type *structDecl(Token **Rest, Token *Tok);
 static Type *unionDecl(Token **Rest, Token *Tok);
 static Node *postfix(Token **Rest, Token *Tok);
 static Node *primary(Token **Rest, Token *Tok);
+static Type *abstractDeclarator(Token **Rest, Token *Tok, Type *Ty);
+static Type *typename(Token **Rest, Token *Tok);
 static Node *Funcall(Token **Rest, Token *Tok);
 
 // 进入域
@@ -244,7 +249,7 @@ static bool isTypename(Token *Tok)
         if (equal(Tok, Kw[i]))
         {
             return true;
-        }      
+        }
     }
 
     // 查找是否为类型别名
@@ -745,7 +750,8 @@ static Token *parseTypedef(Token *Tok, Type *BaseTy)
 
     while (!consume(&Tok, Tok, ";"))
     {
-        if (!First){
+        if (!First)
+        {
             Tok = skip(Tok, ",");
         }
         First = false;
@@ -1254,6 +1260,7 @@ static Node *postfix(Token **Rest, Token *Tok)
 // primary = "(" "{" stmt+ "}" ")" [GNU]
 //         | "(" expr ")"
 //         | "sizeof" unary
+//         | "sizeof" "(" typeName ")"
 //         | ident funcArgs?
 //         | str
 //         | num
@@ -1261,6 +1268,8 @@ static Node *postfix(Token **Rest, Token *Tok)
 // @param Tok 当前正在解析的 Token
 static Node *primary(Token **Rest, Token *Tok)
 {
+    Token *start = Tok;
+
     if (equal(Tok, "("))
     {
         // "(" "{" stmt+ "}" ")" [GNU]
@@ -1276,6 +1285,12 @@ static Node *primary(Token **Rest, Token *Tok)
         Node *node = expr(&Tok, Tok->next);
         *Rest = skip(Tok, ")");
         return node;
+    }
+    else if (equal(Tok, "sizeof") && equal(Tok->next, "(") && isTypename(Tok->next->next)) // "sizeof" "(" typeName ")"
+    {
+        Type *Ty = typename(&Tok, Tok->next->next);
+        *Rest = skip(Tok, ")");
+        return newNumNode(start, Ty->size);
     }
     else if (equal(Tok, "sizeof"))
     {
@@ -1316,6 +1331,43 @@ static Node *primary(Token **Rest, Token *Tok)
         errorTok(Tok, "expected an expression");
         return NULL;
     }
+}
+
+// typeName = declspec abstractDeclarator
+// 获取类型的相关信息
+static Type *typename(Token **Rest, Token *Tok)
+{
+    // declspec
+    Type *Ty = declspec(&Tok, Tok, NULL);
+    // abstractDeclarator
+    return abstractDeclarator(Rest, Tok, Ty);
+}
+
+// abstractDeclarator = "*"* ("(" abstractDeclarator ")")? typeSuffix
+static Type *abstractDeclarator(Token **Rest, Token *Tok, Type *Ty)
+{
+    // "*"*
+    while (equal(Tok, "*"))
+    {
+        Ty = pointerTo(Ty);
+        Tok = Tok->next;
+    }
+
+    if (equal(Tok, "("))
+    {
+        Token *Start = Tok;
+        Type Dummy = {};
+        // 使 Tok 前进到")"后面的位置
+        abstractDeclarator(&Tok, Start->next, &Dummy);
+        Tok = skip(Tok, ")");
+        // 获取到括号后面的类型后缀，Ty 为解析完的类型，Rest 指向分号
+        Ty = typeSuffix(Rest, Tok, Ty);
+        // 解析 Ty 整体作为 Base 去构造，返回 Type 的值
+        return abstractDeclarator(&Tok, Start->next, Ty);
+    }
+
+    // typeSuffix
+    return typeSuffix(Rest, Tok, Ty);
 }
 
 // Funcall = ident "(" (assign ("," assign)*)? ")"
