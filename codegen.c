@@ -186,7 +186,7 @@ static void genExpr(Node *node)
         genExpr(node->LHS);
         writeln("  # 对 a0 值进行取反\n");
         // neg a0, a0 是 sub a0, x0, a0 的别名，即 a0=0-a0
-        writeln("  neg a0, a0\n");
+        writeln("  neg%s a0, a0", node->type->size <= 4 ? "w" : "");
         return;
         // 逗号
     case ND_COMMA:
@@ -240,6 +240,7 @@ static void genExpr(Node *node)
     genExpr(node->LHS);
     pop("a1"); // 取回右子树结果
 
+    char *Suffix = Nd->LHS->Ty->Kind == TY_LONG || Nd->LHS->Ty->Base ? "" : "w";
     switch (node->kind)
     {
     case ND_EQ:
@@ -270,19 +271,19 @@ static void genExpr(Node *node)
         return;
     case ND_ADD:
         writeln("  # a0+a1，结果写入 a0\n");
-        writeln("  add a0, a0, a1\n");
+        writeln("  add%s a0, a0, a1", Suffix);
         return;
     case ND_SUB:
         writeln("  # a0-a1，结果写入 a0\n");
-        writeln("  sub a0, a0, a1\n");
+        writeln("  sub%s a0, a0, a1", Suffix);
         return;
     case ND_MUL:
         writeln("  # a0*a1，结果写入 a0\n");
-        writeln("  mul a0, a0,  a1\n");
+        writeln("  mul%s a0, a0, a1", Suffix);
         return;
     case ND_DIV:
         writeln("  # a0/a1，结果写入a0\n");
-        writeln("  div a0, a0, a1\n");
+        writeln("  div%s a0, a0, a1", Suffix);
         return;
     default:
         errorTok(node->Tok, "invalid expression");
