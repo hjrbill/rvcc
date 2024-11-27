@@ -161,6 +161,71 @@ static void getAddr(Node *node)
     }
 }
 
+// 类型枚举
+enum
+{
+    I8,
+    I16,
+    I32,
+    I64
+};
+
+// 获取类型对应的枚举值
+static int getTypeId(Type *type)
+{
+    switch (type->kind)
+    {
+    case TY_CHAR:
+        return I8;
+    case TY_SHORT:
+        return I16;
+    case TY_INT:
+        return I32;
+    default:
+        return I64;
+    }
+}
+
+// 类型映射表
+// 先逻辑左移 N 位，再算术右移 N 位，就实现了将 64 位有符号数转换为 64-N 位的有符号数
+static char i64i8[] = "  # 转换为 i8 类型\n"
+                      "  slli a0, a0, 56\n"
+                      "  srai a0, a0, 56";
+static char i64i16[] = "  # 转换为 i16 类型\n"
+                       "  slli a0, a0, 48\n"
+                       "  srai a0, a0, 48";
+static char i64i32[] = "  # 转换为 i32 类型\n"
+                       "  slli a0, a0, 32\n"
+                       "  srai a0, a0, 32";
+
+// 所有类型转换表
+static char *castTable[10][10] = {
+    // clang-format off
+    // 被映射到
+    // {i8,  i16,    i32,    i64}
+    {NULL,   NULL,   NULL,   NULL}, // 从 i8 转换
+    {i64i8,  NULL,   NULL,   NULL}, // 从 i16 转换
+    {i64i8,  i64i16, NULL,   NULL}, // 从 i32 转换
+    {i64i8,  i64i16, i64i32, NULL}, // 从 i64 转换
+
+    // clang-format on
+};
+
+// 类型转换
+static void cast(Type *From, Type *To)
+{
+    if (To->kind == TY_VOID)
+        return;
+    // 获取类型的枚举值
+    int T1 = getTypeId(From);
+    int T2 = getTypeId(To);
+    if (castTable[T1][T2])
+    {
+        writeln("  # 转换函数");
+        writeln("%s", castTable[T1][T2]);
+    }
+}
+
 static void genExpr(Node *node)
 {
     // .loc 文件编号 行号，关联具体的汇编代码和源码中的行号，便于调试器将汇编代码行与源码行对应起来。
@@ -204,6 +269,10 @@ static void genExpr(Node *node)
         // li 为 addi 别名指令，加载一个立即数到寄存器中
         writeln("  li a0, %ld\n", node->Val);
         return;
+    case ND_CAST: // 是类型转换
+        genExpr(node->LHS);
+        cast(node->LHS->type, node->type);
+        return;
     case ND_STMT_EXPR:
     {
         for (Node *Nd = node->Body; Nd; Nd = Nd->next)
@@ -240,7 +309,7 @@ static void genExpr(Node *node)
     genExpr(node->LHS);
     pop("a1"); // 取回右子树结果
 
-    char *Suffix = Nd->LHS->Ty->Kind == TY_LONG || Nd->LHS->Ty->Base ? "" : "w";
+    char *Suffix = node->LHS->type->kind == TY_LONG || node->LHS->type->base ? "" : "w";
     switch (node->kind)
     {
     case ND_EQ:

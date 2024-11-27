@@ -99,8 +99,9 @@ static Member *getStructMember(Token *Tok, Type *type)
 // equality = relational ("==" relational | "!=" relational)*
 // relational = add ("<" add | "<=" add | ">" add | ">=" add)*
 // add = mul ("+" mul | "-" mul)*
-// mul = unary ("*" unary | "/" unary)*
-// unary = ("+" | "-" | "*" | "&") unary | postfix
+// mul = cast ("*" cast | "/" cast)*
+// cast = "(" typeName ")" cast | unary
+// unary = ("+" | "-" | "*" | "&") cast | postfix
 // structMembers = (declspec declarator (","  declarator)* ";")*
 // structDecl = structUnionDecl
 // unionDecl = structUnionDecl
@@ -134,6 +135,7 @@ static Node *equality(Token **Rest, Token *Tok);
 static Node *relational(Token **Rest, Token *Tok);
 static Node *add(Token **Rest, Token *Tok);
 static Node *mul(Token **Rest, Token *Tok);
+static Node *cast(Token **Rest, Token *Tok);
 static Node *unary(Token **Rest, Token *Tok);
 static void structMembers(Token **Rest, Token *Tok, Type *Ty);
 static Type *structDecl(Token **Rest, Token *Tok);
@@ -338,6 +340,15 @@ static Node *newNumNode(Token *Tok, int64_t Val)
     return node;
 }
 
+// 新建一个长整型节点
+static Node *newLong(Token *Tok, int64_t Val)
+{
+    Node *node = newNode(ND_NUM, Tok);
+    node->Val = Val;
+    node->type = TyLong;
+    return node;
+}
+
 // 创建二元运算节点
 static Node *newBinary(NodeKind kind, Token *Tok, Node *lhs, Node *rhs)
 {
@@ -374,7 +385,7 @@ static Node *newAddBinary(Token *Tok, Node *LHS, Node *RHS)
         RHS = Tmp;
     }
     // ptr + num
-    RHS = newBinary(ND_MUL, Tok, RHS, newNumNode(Tok, LHS->type->base->size)); // ptr + 1 == ptr + 1*sizeof(ptr->base)
+    RHS = newBinary(ND_MUL, Tok, RHS, newLong(Tok, LHS->type->base->size)); // ptr + 1 == ptr + 1*sizeof(ptr->base)
     return newBinary(ND_ADD, Tok, LHS, RHS);
 }
 
@@ -402,12 +413,27 @@ static Node *newSubBinary(Token *Tok, Node *LHS, Node *RHS)
     // ptr - num
     if (LHS->type->base && isInteger(RHS->type))
     {
-        RHS = newBinary(ND_MUL, Tok, RHS, newNumNode(Tok, LHS->type->base->size));
-        return newBinary(ND_SUB, Tok, LHS, RHS);
+        RHS = newBinary(ND_MUL, Tok, RHS, newLong(Tok, LHS->type->base->size)); // 指针用 long 类型存储
+        addType(RHS);
+        Node *node = newBinary(ND_SUB, Tok, LHS, RHS);
+        node->type = LHS->type; // 节点类型为指针
+        return node;
     }
 
     errorTok(Tok, "invalid operands");
     return NULL;
+}
+
+// 创建类型转换节点
+Node *newCast(Node *Expr, Type *type)
+{
+    addType(Expr);
+    Node *node = calloc(1, sizeof(Node));
+    node->kind = ND_CAST;
+    node->Tok = Expr->Tok;
+    node->LHS = Expr;
+    node->type = copyType(type);
+    return node;
 }
 
 // 创建一元运算节点
@@ -1050,21 +1076,21 @@ static Node *add(Token **Rest, Token *Tok)
     }
 }
 
-// mul = unary ("*" unary | "/" unary)*
+// mul = cast  ("*" cast  | "/" cast )*
 // @param Rest 用于向上传递仍需要解析的 Token 的首部
 // @param Tok 当前正在解析的 Token
 static Node *mul(Token **Rest, Token *Tok)
 {
-    Node *node = unary(&Tok, Tok);
+    Node *node = cast(&Tok, Tok);
     while (true)
     {
         if (equal(Tok, "*"))
         {
-            node = newBinary(ND_MUL, Tok, node, unary(&Tok, Tok->next));
+            node = newBinary(ND_MUL, Tok, node, cast(&Tok, Tok->next));
         }
         else if (equal(Tok, "/"))
         {
-            node = newBinary(ND_DIV, Tok, node, unary(&Tok, Tok->next));
+            node = newBinary(ND_DIV, Tok, node, cast(&Tok, Tok->next));
         }
         else
         {
@@ -1074,26 +1100,45 @@ static Node *mul(Token **Rest, Token *Tok)
     }
 }
 
-// unary = ("+" | "-" | "*" | "&") unary | postfix
+// 解析类型转换
+// cast = "(" typeName ")" cast | unary
+static Node *cast(Token **Rest, Token *Tok)
+{
+    // cast = "(" typeName ")" cast
+    if (equal(Tok, "(") && isTypename(Tok->next))
+    {
+        Token *start = Tok;
+        Type *Ty = typename(&Tok, Tok->next);
+        Tok = skip(Tok, ")");
+        // 解析嵌套的类型转换
+        Node *node = newCast(cast(Rest, Tok), Ty);
+        node->Tok = start;
+        return node;
+    }
+    // unary
+    return unary(Rest, Tok);
+}
+
+// unary = ("+" | "-" | "*" | "&") cast  | postfix
 // @param Rest 用于向上传递仍需要解析的 Token 的首部
 // @param Tok 当前正在解析的 Token
 static Node *unary(Token **Rest, Token *T)
 {
     if (equal(T, "+"))
     {
-        return unary(Rest, T->next);
+        return cast(Rest, T->next);
     }
     else if (equal(T, "-"))
     {
-        return newUnary(ND_NEG, T, unary(Rest, T->next));
+        return newUnary(ND_NEG, T, cast(Rest, T->next));
     }
     else if (equal(T, "*"))
     {
-        return newUnary(ND_DEREF, T, unary(Rest, T->next));
+        return newUnary(ND_DEREF, T, cast(Rest, T->next));
     }
     else if (equal(T, "&"))
     {
-        return newUnary(ND_ADDR, T, unary(Rest, T->next));
+        return newUnary(ND_ADDR, T, cast(Rest, T->next));
     }
     return postfix(Rest, T); // Tok 未进行运算，需要解析首部仍为 Rest
 }

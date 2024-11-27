@@ -148,7 +148,9 @@ typedef enum
     ND_BLOCK,   // { ... }，代码块
     ND_FUNCALL, // 函数调用
 
-    ND_VAR,       // 变量
+    ND_VAR,  // 变量
+    ND_CAST, // 类型转换
+
     ND_IF,        // if 语句
     ND_FOR,       // for | while 语句 (while 是 for 的一种特殊情况)
     ND_EXPR_STMT, // 表达式语句
@@ -202,6 +204,8 @@ struct Obj
     int stackSize; // 栈深度
 };
 
+// 类型转换，将表达式的值转换为另一种类型
+Node *newCast(Node *Expr, Type *type);
 // 语法解析入口函数
 Obj *parse(Token *Tok);
 

@@ -56,6 +56,29 @@ Type *copyType(Type *Ty)
     return Ret;
 }
 
+// 获取容纳左右部的类型
+static Type *getCommonType(Type *Ty1, Type *Ty2)
+{
+    if (Ty1->base)
+    {
+        return pointerTo(Ty1->base);
+    }
+    if (Ty1->size == 8 || Ty2->size == 8)
+    {
+        return TyLong;
+    }
+    return TyInt;
+}
+
+// 进行常规的算术转换
+static void usualArithConv(Node **LHS, Node **RHS)
+{
+    Type *type = getCommonType((*LHS)->type, (*RHS)->type);
+    // 将左右部转换到兼容的类型
+    *LHS = newCast(*LHS, type);
+    *RHS = newCast(*RHS, type);
+}
+
 // 为节点内的所有节点添加类型
 void addType(Node *node)
 {
@@ -90,13 +113,27 @@ void addType(Node *node)
     case ND_SUB:
     case ND_MUL:
     case ND_DIV:
-    case ND_NEG:
+        // 对左右部转换
+        usualArithConv(&node->LHS, &node->RHS);
         node->type = node->LHS->type;
         return;
+    case ND_NEG:
+    {
+        // 对左部转换
+        Type *type = getCommonType(TyInt, node->LHS->type);
+        node->LHS = newCast(node->LHS, type);
+        node->type = type;
+        return;
+    }
     case ND_ASSIGN:
         if (node->LHS->type->kind == TY_ARRAY) // 赋值操作符左部必须不是数组
         {
             errorTok(node->LHS->Tok, "not an lvalue");
+        }
+        if (node->LHS->type->kind != TY_STRUCT)
+        {
+            // 对右部转换
+            node->RHS = newCast(node->RHS, node->LHS->type);
         }
         node->type = node->LHS->type;
         return;
@@ -109,9 +146,15 @@ void addType(Node *node)
     case ND_NE:
     case ND_LT:
     case ND_LE:
+        // 对左右部转换
+        usualArithConv(&node->LHS, &node->RHS);
+        node->type = TyInt;
+        return;
     case ND_FUNCALL:
-    case ND_NUM:
         node->type = TyLong;
+        return;
+    case ND_NUM: // 判断是否 Val 强制转换为 int 后依然完整，完整则用 int 否则用 long
+        node->type = (node->Val == (int)node->Val) ? TyInt : TyLong;
         return;
 
     case ND_VAR:
