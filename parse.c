@@ -43,6 +43,9 @@ Obj *Globals; // 全局变量（全局函数）
 // 域链表
 static scope *Scp = &(scope){};
 
+// 指向当前正在解析的函数
+static Obj *CurrentFn;
+
 // 获取变量名
 static char *getIdent(Token *Tok)
 {
@@ -546,6 +549,7 @@ static Token *function(Token *Tok, Type *declspec)
         return Tok;
     }
 
+    CurrentFn = fn;
     // 清空上一个函数的 Locals
     Locals = NULL;
 
@@ -940,8 +944,12 @@ static Node *stmt(Token **Rest, Token *T)
     }
     else if (equal(T, "return")) // return expr;
     {
-        T = T->next;
-        Node *node = newUnary(ND_RETURN, T, expr(&T, T));
+        Node *node = newNode(ND_RETURN, T);
+        Node *Exp = expr(&T, T->next);
+        addType(Exp);
+        // 对于返回值进行类型转换
+        node->LHS = newCast(Exp, CurrentFn->type->ReturnTy);
+
         *Rest = skip(T, ";");
         return node;
     }
@@ -1418,30 +1426,60 @@ static Type *abstractDeclarator(Token **Rest, Token *Tok, Type *Ty)
 // Funcall = ident "(" (assign ("," assign)*)? ")"
 static Node *Funcall(Token **Rest, Token *Tok)
 {
-    Node *node = newNode(ND_FUNCALL, Tok);
-    node->FuncName = strndup(Tok->Loc, Tok->Len);
-
+    Token *Start = Tok;
     Tok = Tok->next->next;
 
+    VarScope *S = FindVarByName(Start); // 用函数名查找
+    if (!S)
+    {
+        errorTok(Start, "implicit declaration of a function");
+    }
+    if (!S->Var || S->Var->type->kind != TY_FUNC)
+    {
+        errorTok(Start, "not a function");
+    }
+
+    // 函数名的类型
+    Type *type = S->Var->type;
+    // 函数形参的类型
+    Type *ParamTy = type->Params;
     Node head = {};
     Node *Cur = &head;
-    int i = 0;
 
     while (!equal(Tok, ")"))
     {
-        if (i++ > 0)
+        if (Cur != &head)
         {
             Tok = skip(Tok, ",");
         }
-        if (i > 6)
+
+        // assign
+        Node *Arg = assign(&Tok, Tok);
+        addType(Arg);
+
+        if (ParamTy)
         {
-            errorTok(Tok, "funcation has too many arguments");
+            if (ParamTy->kind == TY_STRUCT || ParamTy->kind == TY_UNION)
+            {
+                errorTok(Arg->Tok, "passing struct or union is not supported yet");
+            }
+            Arg = newCast(Arg, ParamTy); // 将参数节点的类型进行转换
+
+            ParamTy = ParamTy->next; // 前进到下一个形参类型
         }
-        Cur->next = assign(&Tok, Tok);
+
+        Cur->next = Arg;
         Cur = Cur->next;
+        addType(Cur);
     }
+
+    *Rest = skip(Tok, ")");
+
+    Node *node = newNode(ND_FUNCALL, Start);
+    node->FuncName = strndup(Start->Loc, Start->Len);
+    node->FuncType = type;     // 函数类型
+    node->type = type->ReturnTy; // 读取的返回类型
     node->Args = head.next;
 
-    *Rest = Tok->next;
     return node;
 }

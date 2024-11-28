@@ -231,8 +231,10 @@ struct Node
 
     Node *Body; // 代码块 or 表达式语句
 
+    // 函数
     char *FuncName; // 函数名
     Node *Args;     // 函数参数
+    Type *FuncType; // 函数返回类型
 
     Type *type;  // 节点中的数据的类型
     Obj *Var;    // ND_VAR 类型的变量
