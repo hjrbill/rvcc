@@ -43,6 +43,9 @@ Obj *Globals; // 全局变量（全局函数）
 // 域链表
 static scope *Scp = &(scope){};
 
+// 指向当前正在解析的函数
+static Obj *CurrentFn;
+
 // 获取变量名
 static char *getIdent(Token *Tok)
 {
@@ -546,6 +549,7 @@ static Token *function(Token *Tok, Type *declspec)
         return Tok;
     }
 
+    CurrentFn = fn;
     // 清空上一个函数的 Locals
     Locals = NULL;
 
@@ -940,8 +944,12 @@ static Node *stmt(Token **Rest, Token *T)
     }
     else if (equal(T, "return")) // return expr;
     {
-        T = T->next;
-        Node *node = newUnary(ND_RETURN, T, expr(&T, T));
+        Node *node = newNode(ND_RETURN, T);
+        Node *Exp = expr(&T, T->next);
+        addType(Exp);
+        // 对于返回值进行类型转换
+        node->LHS = newCast(Exp, CurrentFn->type->ReturnTy);
+
         *Rest = skip(T, ";");
         return node;
     }
@@ -1424,7 +1432,7 @@ static Node *Funcall(Token **Rest, Token *Tok)
     VarScope *S = FindVarByName(Start); // 用函数名查找
     if (!S)
     {
-         errorTok(Start, "implicit declaration of a function");
+        errorTok(Start, "implicit declaration of a function");
     }
     if (!S->Var || S->Var->type->kind != TY_FUNC)
     {
@@ -1450,10 +1458,9 @@ static Node *Funcall(Token **Rest, Token *Tok)
         Cur = Cur->next;
         addType(Cur);
     }
-    
 
     *Rest = skip(Tok, ")");
-    
+
     Node *node = newNode(ND_FUNCALL, Start);
     node->FuncName = strndup(Start->Loc, Start->Len);
     node->type = Ty;

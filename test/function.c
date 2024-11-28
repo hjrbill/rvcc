@@ -43,6 +43,12 @@ int sub_short(short a, short b, short c)
     return a - b - c;
 }
 
+// [59] 处理返回类型转换
+int g1;
+
+int *g1_ptr() { return &g1; }
+char int_to_char(int x) { return x; }
+
 int main()
 {
     // [21] 支持最多 6 个参数的函数定义
@@ -56,6 +62,12 @@ int main()
     ASSERT(1, sub2(4, 3));
     ASSERT(55, fib(9));
     ASSERT(1, ({ sub_char(7, 3, 3); }));
+
+    // [59] 处理返回类型转换
+    g1 = 3;
+
+    ASSERT(3, *g1_ptr());
+    ASSERT(5, int_to_char(261));
 
     printf("OK\n");
     return 0;
