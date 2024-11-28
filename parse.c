@@ -1418,11 +1418,20 @@ static Type *abstractDeclarator(Token **Rest, Token *Tok, Type *Ty)
 // Funcall = ident "(" (assign ("," assign)*)? ")"
 static Node *Funcall(Token **Rest, Token *Tok)
 {
-    Node *node = newNode(ND_FUNCALL, Tok);
-    node->FuncName = strndup(Tok->Loc, Tok->Len);
-
+    Token *Start = Tok;
     Tok = Tok->next->next;
 
+    VarScope *S = FindVarByName(Start); // 用函数名查找
+    if (!S)
+    {
+         errorTok(Start, "implicit declaration of a function");
+    }
+    if (!S->Var || S->Var->type->kind != TY_FUNC)
+    {
+        errorTok(Start, "not a function");
+    }
+
+    Type *Ty = S->Var->type->ReturnTy;
     Node head = {};
     Node *Cur = &head;
     int i = 0;
@@ -1439,9 +1448,16 @@ static Node *Funcall(Token **Rest, Token *Tok)
         }
         Cur->next = assign(&Tok, Tok);
         Cur = Cur->next;
+        addType(Cur);
     }
+    
+
+    *Rest = skip(Tok, ")");
+    
+    Node *node = newNode(ND_FUNCALL, Start);
+    node->FuncName = strndup(Start->Loc, Start->Len);
+    node->type = Ty;
     node->Args = head.next;
 
-    *Rest = Tok->next;
     return node;
 }
