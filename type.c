@@ -151,7 +151,7 @@ void addType(Node *node)
         node->type = TyInt;
         return;
     case ND_FUNCALL:
-        node->type = TyLong;
+        node->type = node->FuncType->ReturnTy;
         return;
     case ND_NUM: // 判断是否 Val 强制转换为 int 后依然完整，完整则用 int 否则用 long
         node->type = (node->Val == (int)node->Val) ? TyInt : TyLong;
